@@ -16,7 +16,8 @@ const std::string_view CannonicalErrorString[] = {
   "Logic error",
   "Resource unobtainable",
   "Unimplemented",
-  "Format mismatch"
+  "Format mismatch",
+  "IO error"
 };
 
 } // namespace error

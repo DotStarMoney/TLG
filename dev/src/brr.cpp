@@ -245,7 +245,7 @@ LoNibble SignExtendNibble(LoNibble x) {
 }
 } // namespace
 
-std::vector<int8_t> BRRCompress(std::vector<int16_t> sample_data) {
+std::vector<int8_t> BRRCompress(const std::vector<int16_t>& sample_data) {
   std::vector<int8_t> comp_data;
 
   // To begin, we pad the last two comp->decomp samples before the current
@@ -273,7 +273,7 @@ std::vector<int8_t> BRRCompress(std::vector<int16_t> sample_data) {
   return comp_data;
 }
 
-std::vector<int16_t> BRRDecompress(std::vector<int8_t> comp_data) {
+std::vector<int16_t> BRRDecompress(const std::vector<int8_t>& comp_data) {
   std::vector<int16_t> sample_data;
   // The current output sample we're processing.
   size_t cur_sample = 0;

@@ -11,6 +11,7 @@ set(SRC_FILES
 	audiosystem.cpp
 	monosampledata16.cpp
 	status.cpp
+	brr_file.cpp
 	stereosampler16.cpp
 		
 	PARENT_SCOPE)

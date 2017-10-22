@@ -10,6 +10,8 @@ set(HDR_FILES
 	audiosystem.h
 	bit_utils.h
 	brr.h
+	brr_file.h
+	sdl_audio_utils.h
 	cannonical_errors.h
 	fixed_point.h
 	monosampledata16.h

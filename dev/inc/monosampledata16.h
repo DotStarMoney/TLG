@@ -76,7 +76,7 @@ class MonoSampleData16 {
   // stores sample data and doesn't just reference it (when possible, we want
   // to MOVE vector data into it).
   template <class DataT>
-  util::StatusOr<std::unique_ptr<MonoSampleData16>> Create(DataT&& data, 
+  static util::StatusOr<std::unique_ptr<MonoSampleData16>> Create(DataT&& data, 
       int sample_rate, bool build_pyramid = false,
       const ADSRSeconds& envelope = DefaultEnvelope, 
       const LoopInfo& loop = DefaultLoopInfo) {

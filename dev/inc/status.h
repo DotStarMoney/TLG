@@ -132,6 +132,12 @@ Status FormatMismatchError(StringT&& msg) {
   return Status(error::FORMAT_MISTMATCH, std::forward<StringT>(msg));
 }
 
+template <class StringT>
+Status IOError(StringT&& msg) {
+  type_assert::IsConvertibleTo<std::string, StringT>();
+  return Status(error::IO_ERROR, std::forward<StringT>(msg));
+}
+
 } // namespace util
 
 #endif // UTIL_STATUS_H_

@@ -12,11 +12,11 @@
 
 namespace audio {
 
-std::vector<int8_t> BRRCompress(std::vector<int16_t> sample_data);
+std::vector<int8_t> BRRCompress(const std::vector<int16_t>& sample_data);
 
-// NOTE: The output will be padded with zeros so that the number of samples is
+// NOTE: The output will be padded with zeros so that the number of samples is 
 // even.
-std::vector<int16_t> BRRDecompress(std::vector<int8_t> comp_data);
+std::vector<int16_t> BRRDecompress(const std::vector<int8_t>& comp_data);
 
 } // namespace audio
 

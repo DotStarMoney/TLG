@@ -28,8 +28,10 @@ enum CannonicalErrors : int {
   RESOURCE_UNOBTAINABLE = 7,
   // A valid code path is not yet implemented.
   UNIMPLEMENTED_ERROR = 8,
-  // A structure purported to follow a specific format did not do so.
-  FORMAT_MISTMATCH = 9
+  // Some sort of structure that purported to follow a specific format did not.
+  FORMAT_MISTMATCH = 9,
+  // A generic error when an io operation failed.
+  IO_ERROR = 10
 };
 
 // The cannonical errors but as strings
