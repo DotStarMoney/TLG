@@ -42,13 +42,17 @@ pstruct BRREnvelope {
 
 } // namespace
 
-
-StatusOr<unique_ptr<MonoSampleData16>> LoadBRR(string_view filename) {
+StatusOr<unique_ptr<MonoSampleData16>> LoadBRR(string_view filename,
+    bool opt_for_resynth) {
   std::ifstream file(filename.data(), std::ios::binary);
   
   BRRHeader brr_header;
   file.read(reinterpret_cast<char*>(&brr_header), sizeof(BRRHeader));
   if (!file) return util::IOError("Reading BRR file failed.");
+
+  if (brr_header.tag != kBRRTag) {
+    return util::FormatMismatchError("Not a valid BRR file, tag is wrong.");
+  }
 
   MonoSampleData16::LoopInfo loop = MonoSampleData16::DefaultLoopInfo;
   MonoSampleData16::ADSRSeconds envelope = MonoSampleData16::DefaultEnvelope;
@@ -59,6 +63,10 @@ StatusOr<unique_ptr<MonoSampleData16>> LoadBRR(string_view filename) {
     file.read(reinterpret_cast<char*>(&brr_loop), sizeof(BRRLoop));
     if (!file) return util::IOError("Reading BRR file failed.");
 
+    if (brr_loop.loop_begin >= brr_loop.loop_end) {
+      return util::FormatMismatchError("Loop start equals or exceeds loop "
+                                       "end.");
+    }
     loop.bounds.begin = brr_loop.loop_begin;
     loop.bounds.length = brr_loop.loop_end - brr_loop.loop_begin + 1;
   }
@@ -68,10 +76,10 @@ StatusOr<unique_ptr<MonoSampleData16>> LoadBRR(string_view filename) {
     file.read(reinterpret_cast<char*>(&brr_envelope), sizeof(BRREnvelope));
     if (!file) return util::IOError("Reading BRR file failed.");
   
-    envelope.attack = static_cast<float>(brr_envelope.attack) / 1000.0;
-    envelope.decay = static_cast<float>(brr_envelope.decay) / 1000.0;
-    envelope.sustain = static_cast<float>(brr_envelope.sustain) / 255.0;
-    envelope.release = static_cast<float>(brr_envelope.release) / 1000.0;
+    envelope.attack = static_cast<float>(brr_envelope.attack) / 1000.0f;
+    envelope.decay = static_cast<float>(brr_envelope.decay) / 1000.0f;
+    envelope.sustain = static_cast<float>(brr_envelope.sustain) / 255.0f;
+    envelope.release = static_cast<float>(brr_envelope.release) / 1000.0f;
   }
 
   uint32_t data_size;
@@ -82,23 +90,32 @@ StatusOr<unique_ptr<MonoSampleData16>> LoadBRR(string_view filename) {
   file.read(reinterpret_cast<char*>(compressed_data.data()), data_size);
   if (!file) return util::IOError("Reading BRR file failed.");
 
+  file.close();
+
   vector<int16_t> sample_data = BRRDecompress(compressed_data);
   // Since BRR blocks can be padded with an extra 0 to enforce even-ness, we
   // must check for this and resize if neccessary
   if (sample_data.size() > brr_header.sample_size) sample_data.pop_back();
 
-  return MonoSampleData16::Create(sample_data, brr_header.sampling_rate, true,
-      envelope, loop);
+  return MonoSampleData16::Create(sample_data, brr_header.sampling_rate, 
+      opt_for_resynth, envelope, loop);
 }
 
 Status SaveBRR(string_view filename, const vector<int16_t>& samples,
     int sampling_rate, uint32_t loop_start, uint32_t loop_end, uint16_t attack,
-    uint8_t decay, uint16_t sustain, uint16_t release) {
+    uint16_t decay, uint8_t sustain, uint16_t release) {
 
   const vector<int8_t> brr_data = BRRCompress(samples);
-  BRRHeader brr_header{kBRRTag, sampling_rate, samples.size(), 0};
+  BRRHeader brr_header{kBRRTag, static_cast<uint16_t>(sampling_rate),
+      samples.size(), 0};
 
-  if ((loop_start != 0) || (loop_end != 0)) brr_header.mode |= kLoopFlag;
+  if ((loop_start != 0) || (loop_end != 0)) {
+    if (loop_start >= loop_end) {
+      return util::FailedPreconditionError("Loop start equals or exceeds loop "
+          "end.");
+    }
+    brr_header.mode |= kLoopFlag;
+  }
   if ((attack != 0) || (decay != 0) || (sustain != 0) || (release != 0)) {
     brr_header.mode |= kEnvelopeFlag;
   }
@@ -122,5 +139,4 @@ Status SaveBRR(string_view filename, const vector<int16_t>& samples,
  
   return util::OkStatus;
 }
-
 } // namespace audio

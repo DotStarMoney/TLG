@@ -22,7 +22,7 @@ namespace audio {
 // Semitones herein are used in the context of twelve-tone equal temperament.
 class StereoSampler16 : public AudioComponent, public SampleSupplier<int16_t> {
  public:
-  explicit StereoSampler16(AudioSystem* const parent, int sample_rate);
+  explicit StereoSampler16(AudioSystem* const parent);
 
   enum State {
     kStopped = 0,
@@ -70,8 +70,6 @@ class StereoSampler16 : public AudioComponent, public SampleSupplier<int16_t> {
   float volume() const { return volume_; }
   float vibrato_range() const { return vibrato_range_; }
   const util::Status& status() const { return status_; }
-
- protected:
 
   util::Status ProvideNextSamples(
     Iter samples_start,

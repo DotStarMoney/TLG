@@ -1,7 +1,6 @@
 #ifndef AUDIO_MONOSAMPLEDATA16_H_
 #define AUDIO_MONOSAMPLEDATA16_H_
 
-#include <array>
 #include <memory>
 #include <vector>
 
@@ -80,10 +79,10 @@ class MonoSampleData16 {
       int sample_rate, bool build_pyramid = false,
       const ADSRSeconds& envelope = DefaultEnvelope, 
       const LoopInfo& loop = DefaultLoopInfo) {
-    type_assert::IsConvertibleTo<ArrayType, DataT>();
+    type_assert::IsConvertibleTo<SampleData, DataT>();
 
     if (((loop.bounds.begin + loop.bounds.length) >=
-            static_cast<ArrayType>(data).size()) || 
+            static_cast<SampleData>(data).size()) || 
         (loop.bounds.begin < 0.0)) {
       return util::FailedPreconditionError("Loop bounds exceed sample data.");
     }
@@ -91,19 +90,17 @@ class MonoSampleData16 {
     SampleDataQPyramid data_pyramid;
     LoopBoundsQPyramid loop_bounds_pyramid;
     if (build_pyramid) {
-      pyramid_levels_ = kQuadFreqPyramidLevels;
       data_pyramid = BuildSampleDataPyramid(std::forward<DataT>(data));
       loop_bounds_pyramid = BuildLoopBoundsPyramid(loop.bounds);
     } else {
-      pyramid_levels_ = 1;
       data_pyramid = {std::forward<DataT>(data)};
       loop_bounds_pyramid = {loop.bounds};
     }
 
-    ADSRSamples envelope = EnvSecondsToSamples(envelope, sample_rate);
+    ADSRSamples samp_envelope = EnvSecondsToSamples(envelope, sample_rate);
  
     return std::unique_ptr<MonoSampleData16>(new MonoSampleData16(
-        std::move(data_pyramid), sample_rate, envelope, loop.mode, 
+        std::move(data_pyramid), sample_rate, samp_envelope, loop.mode,
         std::move(loop_bounds_pyramid)));
   }
 
@@ -133,16 +130,19 @@ class MonoSampleData16 {
    // playing linearly interpolated sample data.
    static constexpr int kQuadFreqPyramidLevels = 4;
 
-   typedef std::array<LoopBounds, kQuadFreqPyramidLevels> LoopBoundsQPyramid;
-   typedef std::array<SampleData, kQuadFreqPyramidLevels> SampleDataQPyramid;
+   typedef std::vector<LoopBounds> LoopBoundsQPyramid;
+   typedef std::vector<SampleData> SampleDataQPyramid;
 
   // More perfect forwarding...
   template <class DataPyramidT, class LoopBoundsPyramidT>
   MonoSampleData16(DataPyramidT&& data_pyramid, int sample_rate,
       const ADSRSamples& envelope, LoopMode loop_mode, 
       LoopBoundsPyramidT&& loop_bounds_pyramid) :
+    pyramid_levels_(
+        static_cast<std::vector<SampleData>>(data_pyramid).size()),
     data_pyramid_(std::forward<DataPyramidT>(data_pyramid)),
-    loop_pyramid_(std::forward<LoopBoundsPyramidT>(loop_bounds_pyramid)),
+    loop_bounds_pyramid_(
+        std::forward<LoopBoundsPyramidT>(loop_bounds_pyramid)),
     envelope_(envelope),
     loop_mode_(loop_mode),
     format_({INT16, MONO, sample_rate}) {
@@ -150,16 +150,15 @@ class MonoSampleData16 {
     type_assert::IsConvertibleTo<LoopBoundsQPyramid, LoopBoundsPyramidT>();
   }
 
-  ADSRSamples EnvSecondsToSamples(const ADSRSeconds& envelope, 
+  static ADSRSamples EnvSecondsToSamples(const ADSRSeconds& envelope, 
       int sampling_rate);
 
   // Another example where we use perfect forwarding to avoid copying sample
   // data.
 
   template <class DataT>
-  std::array<SampleData, kQuadFreqPyramidLevels> BuildSampleDataPyramid(
-      DataT&& data) {
-    std::array<SampleData, kQuadFreqPyramidLevels> pyramid;
+  static std::vector<SampleData> BuildSampleDataPyramid(DataT&& data) {
+    std::vector<SampleData> pyramid(kQuadFreqPyramidLevels);
     pyramid[0] = std::forward<DataT>(data);
     for (int level = 1; level < kQuadFreqPyramidLevels; ++level) {
       pyramid[level] = QuadFreqSampleData(pyramid[level - 1]);
@@ -167,11 +166,12 @@ class MonoSampleData16 {
     return pyramid;
   }
 
-  LoopBoundsQPyramid BuildLoopBoundsPyramid(const LoopBounds& loop_bounds);
+  static LoopBoundsQPyramid BuildLoopBoundsPyramid(const LoopBounds& loop_bounds);
 
   // Produce sample data from a source at 4x the frequency (2 octaves above).
-  SampleData QuadFreqSampleData(const SampleData& data);
+  static SampleData QuadFreqSampleData(const SampleData& data);
 
+  const int pyramid_levels_;
   // See docs for kQuarterFrequencyPyramidLevels for information on the
   // pyramiding optimization scheme.
   const SampleDataQPyramid data_pyramid_;
@@ -180,7 +180,6 @@ class MonoSampleData16 {
   const ADSRSamples envelope_;
   const LoopMode loop_mode_;
   const Format format_;
-  const int pyramid_levels_;
 };
 
 } // namespace audio

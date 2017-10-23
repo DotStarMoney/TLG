@@ -33,9 +33,9 @@ include_directories(${CMAKE_BINARY_DIR}/inc)
 add_executable(TLG ${ABSOLUTE_SRC_FILES} ${ABSOLUTE_HDR_FILES})
 
 if(WIN32)
-    target_link_libraries(TLG debug ${EX_PROJ_BUILD_DIR}/SDL_EX/Debug/SDL2d${CMAKE_STATIC_LIBRARY_SUFFIX})
+    target_link_libraries(TLG debug ${EX_PROJ_BUILD_DIR}/SDL_EX/Debug/SDL2-staticd${CMAKE_STATIC_LIBRARY_SUFFIX})
     target_link_libraries(TLG debug ${EX_PROJ_BUILD_DIR}/SDL_EX/Debug/SDL2maind${CMAKE_STATIC_LIBRARY_SUFFIX})
-	target_link_libraries(TLG optimized ${EX_PROJ_BUILD_DIR}/SDL_EX/Release/SDL2${CMAKE_STATIC_LIBRARY_SUFFIX})
+	target_link_libraries(TLG optimized ${EX_PROJ_BUILD_DIR}/SDL_EX/Release/SDL2-static${CMAKE_STATIC_LIBRARY_SUFFIX})
 	target_link_libraries(TLG optimized ${EX_PROJ_BUILD_DIR}/SDL_EX/Release/SDL2main${CMAKE_STATIC_LIBRARY_SUFFIX})
 	target_link_libraries(TLG winmm.lib imm32.lib version.lib)
 	add_custom_command(TARGET TLG POST_BUILD

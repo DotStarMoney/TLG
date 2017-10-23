@@ -19,7 +19,8 @@ class AudioSystem {
   // Get a value from a system wide oscillator with oscillations between -1 and
   // 1. Values retrieved from this method should approximate a sinusoid.
   float GetOscillatorValue(uint32_t elapsed_samples);
-
+  
+  SampleRate sample_rate() const { return sample_rate_; }
  private:
   const SampleRate sample_rate_;
   // An oscillator rate in Cycles / Sample.

@@ -3,6 +3,7 @@
 #include <iostream>
 
 #include "cannonical_errors.h"
+#include "strcat.h"
 
 namespace util {
 
@@ -63,6 +64,14 @@ bool Status::SlowComparePayloadsForEquality(Payload* lhs, Payload* rhs) {
   if (lhs->cannonical_error_code != rhs->cannonical_error_code) return false;
   if (lhs->message.compare(rhs->message) != 0) return false;
   return true;
+}
+
+std::string Status::ToString() const {
+  if (ok()) return "Ok.";
+  
+  return util::StrCat(
+      util::error::CannonicalErrorString[cannonical_error_code()], ": ",
+      message());
 }
 
 // First try and check pointers, if no luck we have to compare them the long 

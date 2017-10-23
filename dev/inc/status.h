@@ -4,6 +4,7 @@
 #include <atomic>
 #include <string_view>
 
+#include "assert.h"
 #include "static_type_assert.h"
 #include "cannonical_errors.h"
 
@@ -42,6 +43,8 @@ class Status final {
   // An ok status returns ""
   std::string_view message() const;
   error::CannonicalErrors cannonical_error_code() const;
+
+  std::string ToString() const;
 
   friend bool operator==(const Status& lhs, const Status& rhs);
   friend bool operator!=(const Status& lhs, const Status& rhs);

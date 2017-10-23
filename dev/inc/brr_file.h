@@ -58,15 +58,17 @@
 
 namespace audio {
 
+// Set opt_for_resynth to true if the returned sample should be optimized for
+// playback at higher frequencies.
 util::StatusOr<std::unique_ptr<MonoSampleData16>> LoadBRR(
-    std::string_view filename);
+    std::string_view filename, bool opt_for_resynth = true);
 
 // If no loop, pass loop_start = loop_end = 0.
 // If no envelope, pass attack = sustain = decay = release = 0
 util::Status SaveBRR(std::string_view filename,
     const std::vector<int16_t>& samples, int sampling_rate, 
     uint32_t loop_start = 0, uint32_t loop_end = 0, uint16_t attack = 0,
-    uint8_t decay = 0, uint16_t sustain = 0, uint16_t release = 0);
+    uint16_t decay = 0, uint8_t sustain = 0, uint16_t release = 0);
 
 } // namespace audio
 

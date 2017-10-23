@@ -26,7 +26,11 @@ inline const std::string_view AsString(std::nullptr_t val,
     std::string* buffer) {
   return "0";
 }
-inline  const std::string_view AsString(const std::string& val,
+inline const std::string_view AsString(const std::string& val,
+    std::string* buffer) {
+  return val;
+}
+inline const std::string_view AsString(const std::string_view& val,
     std::string* buffer) {
   return val;
 }
@@ -48,6 +52,9 @@ inline std::string ToString(std::nullptr_t val) {
 inline std::string ToString(const std::string& val) {
   return std::string(val);
 }
+inline std::string ToString(const std::string_view& val) {
+  return std::string(val);
+}
 inline std::string ToString(const char* val) {
   return std::string(val);
 }
@@ -58,7 +65,8 @@ struct IsStringablePrimitiveBase {
       std::is_floating_point<T>::value ||
       std::is_pointer<T>::value ||
       std::is_same<T, std::string>::value ||
-      std::is_same<T, char*>::value;
+      std::is_same<T, char*>::value ||
+      std::is_same<T, std::string_view>::value;
 };
 template <class T>
 struct IsStringablePrimitive {

@@ -16,6 +16,7 @@ MonoSampleData16::ADSRSamples MonoSampleData16::EnvSecondsToSamples(
 MonoSampleData16::LoopBoundsQPyramid MonoSampleData16::BuildLoopBoundsPyramid(
     const LoopBounds& loop_bounds) {
   LoopBoundsQPyramid pyramid = {loop_bounds};
+  pyramid.resize(kQuadFreqPyramidLevels);
   for (int level = 1; level < kQuadFreqPyramidLevels; ++level) {
     pyramid[level].begin = pyramid[level - 1].begin * 0.25;
     pyramid[level].length = pyramid[level - 1].length * 0.25;

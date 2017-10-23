@@ -13,6 +13,7 @@ set(HDR_FILES
 	brr_file.h
 	sdl_audio_utils.h
 	cannonical_errors.h
+	make_cleanup.h
 	fixed_point.h
 	monosampledata16.h
 	platform.h

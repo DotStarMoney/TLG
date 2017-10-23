@@ -1,5 +1,6 @@
 #include "audiosystem.h"
 
+#define _USE_MATH_DEFINES
 #include <math.h>
 
 namespace audio {
@@ -18,7 +19,8 @@ void AudioSystem::set_oscillator_rate(float rate) {
 }
 
 float AudioSystem::GetOscillatorValue(uint32_t elapsed_samples) {
-  return static_cast<float>(sin(elapsed_samples * oscillator_rate_));
+  return static_cast<float>(
+      sin(elapsed_samples * oscillator_rate_ * M_PI * 2));
 }
 
 } // namespace audio

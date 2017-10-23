@@ -1,5 +1,6 @@
 #include "stereosampler16.h"
 
+#include <algorithm>
 #include <cmath>
 #include <string>
 
@@ -49,8 +50,9 @@ bool IsValidVolume(float volume) {
 } // namespace
 
 // We've got a lot of parameters to initialize here, see the breakdown:
-StereoSampler16::StereoSampler16(AudioSystem* const parent, int sample_rate) :
-    AudioComponent(parent), SampleSupplier({INT16, STEREO, sample_rate}), 
+StereoSampler16::StereoSampler16(AudioSystem* const parent) :
+    AudioComponent(parent), 
+    SampleSupplier({INT16, STEREO, parent->sample_rate()}), 
     state_(kStopped),               // we aren't playing anything...
     status_(util::OkStatus),        // no issues yet...
     pan_(0.0),                      // pan to the middle
@@ -148,13 +150,14 @@ std::pair<double, bool> StereoSampler16::GetEnvelopeValue(
 
 int16_t StereoSampler16::GetSample(double playback_position,
     double playback_rate) const {
-  double playback_position_adj;
-  double playback_rate_adj;
+  double playback_position_adj = playback_position;
+  double playback_rate_adj = playback_rate;
   // Scale the elapsed samples and playback rate should we be able to take
   // advantage of the frequency quadrupling pyramid.
   int level = 0;
   if (playback_rate > 4.0) {
-    level = static_cast<int>(std::floor(std::log2(playback_rate)));
+    // log2(x) / 2 == log4(x)
+    level = static_cast<int>(std::floor(std::log2(playback_rate) * 0.5));
     if (level >= sample_->pyramid_levels()) {
       level = sample_->pyramid_levels() - 1;
     }
@@ -242,25 +245,20 @@ util::Status StereoSampler16::ProvideNextSamples(
   const double volume_multiplier = playback_volume_ + volume_;
   const float semitone_offset = playback_pitch_shift_ + pitch_shift_;
   const float pan_percent_r = (pan_ + 1.0f) * 0.5f;
-  while (--sample_size >= 0) {
+  do {
     int16_t sample = 0;
     const float final_offset = semitone_offset + 
         parent_->GetOscillatorValue(sample_clock) * vibrato_range_;
 
-    // The failure mode for exceeding above the octaves covered by the pyramid 
-    // is to return silence (each pyramid level covers 2 octaves / 24 
-    // semitones).
-    if (final_offset <= (sample_->pyramid_levels() * 24)) {
-      sample = IterateNextSample(SemitonesToFreqMul(final_offset));
-    }
-
+    sample = IterateNextSample(SemitonesToFreqMul(final_offset));
+    
     sample = static_cast<int16_t>(std::clamp(static_cast<double>(sample) * 
         volume_multiplier, -32768.0, 32767.0));
 
     *(samples_start++) = static_cast<int16_t>(sample * (1.0 - pan_percent_r));
     *(samples_start++) = static_cast<int16_t>(sample * pan_percent_r);
     ++sample_clock;
-  }
+  } while (sample_size-- > 1);
   return util::OkStatus;
 }
 
@@ -308,7 +306,7 @@ void StereoSampler16::Play(float semitone_shift, float volume) {
   Stop();
   state_ = kPlaying;
   playback_pitch_shift_ = semitone_shift;
-  playback_volume_ = volume_;
+  playback_volume_ = volume;
   
 }
 
@@ -324,7 +322,7 @@ void StereoSampler16::Release() {
 }
 
 void StereoSampler16::SetPan(float pan) {
-  if ((pan < 1.0) || (pan > 1.0)) {
+  if ((pan < -1.0) || (pan > 1.0)) {
     status_ = util::InvalidArgumentError(
         StrCat("Panning parameter must be in range [-1.0, 1.0], got ", 
             pan, "."));

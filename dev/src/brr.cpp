@@ -120,7 +120,7 @@ int32_t GreedyBlockBRRSampleCompress(
   if (samples == 1) return error;
   ++sample_data;
 
-  error += BRRCompressAndGetError(*sample_data, *(sample_data - 1),
+  error += BRRCompressAndGetError(*sample_data, prev_decomp_samples[0],
       d_sample_minus_1, filter, &compressed_sample,
       &prev_decomp_samples[1]);
   // This or-ing is safe becase: (see comment on previous *compressed_data = )
@@ -170,29 +170,29 @@ int32_t GreedyBlockBRRSampleCompress(
 
 // Reverse the linear prediction formula:
 //
-//    n = (s_n - k1 * s_n-1 + k2 * s_n-2) / 2^r
+//    c = clamp((s_n - k1 * s_n-1 + k2 * s_n-2) / 2^r, -8, 7)
 //
-// Where c are the compressed bytes, s are the decompressed samples,
-// and n is the current sample.
+// Where c is the compressed nibble, s are the decompressed samples, and n is 
+// the current sample.
 //
 LoNibble BRRCompressSample(int16_t sample_0, int16_t d_sample_minus_1,
     int16_t d_sample_minus_2, BRRFilter filter) {
-  return static_cast<LoNibble>(((static_cast<int32_t>(sample_0) << 16) -
-    filter.lp_k.k1*d_sample_minus_1 + filter.lp_k.k2*d_sample_minus_2) >>
-    (filter.exp_bit_shift + 16));
+  return std::clamp(((static_cast<int32_t>(sample_0) << 16) -
+      filter.lp_k.k1*d_sample_minus_1 + filter.lp_k.k2*d_sample_minus_2) >>
+      (filter.exp_bit_shift + 16), -8, 7);
 }
 // Apply the linear prediction formula:
 //
-//    s_n = 2^r * c_n + k1 * s_n-1 - k2 * s_n-2 
+//    s_n = 2^r * c + k1 * s_n-1 - k2 * s_n-2 
 //
-// Where c are the compressed bytes, s are the decompressed samples,
-// and n is the current sample.
+// Where c is the compressed nibble, s are the decompressed samples, and n is
+// the current sample.
 //
 int16_t BRRDecompressSample(LoNibble sample_0, int16_t d_sample_minus_1,
     int16_t d_sample_minus_2, BRRFilter filter) {
   return static_cast<int16_t>(((static_cast<int32_t>(sample_0) <<
-    (filter.exp_bit_shift + 16)) + filter.lp_k.k1*d_sample_minus_1 -
-    filter.lp_k.k2*d_sample_minus_2) >> 16);
+      (filter.exp_bit_shift + 16)) + filter.lp_k.k1*d_sample_minus_1 -
+      filter.lp_k.k2*d_sample_minus_2) >> 16);
 }
 
 // BRR Compress a single block of up to 16 samples.
@@ -205,14 +205,17 @@ void BlockBRRCompress(
     BRRSampleIter compressed_data,
     std::array<int16_t, 2>* last_decomp_samples) {
   // Save these values so we can write over decomp_samples.
-  int16_t d_sample_minus_1 = (*last_decomp_samples)[1];
-  int16_t d_sample_minus_2 = (*last_decomp_samples)[0];
+  const int16_t d_sample_minus_1 = (*last_decomp_samples)[1];
+  const int16_t d_sample_minus_2 = (*last_decomp_samples)[0];
 
   std::array<int16_t, 2> current_last_decomp_samples;
   std::array<int8_t, 8> current_compressed_data;
   int32_t current_error;
-
   int32_t best_error = std::numeric_limits<int32_t>::max();
+
+  // The filter mode resulting in the least error.
+  int8_t best_filter = 0;
+
   // Try all 64 filter modes; pick the one that minimizes the error. This makes
   // no attempt to order the filter modes to avoid extra copies. Also, theres
   // no real reason we have to do this, but this is in no way performance
@@ -226,22 +229,35 @@ void BlockBRRCompress(
         &current_last_decomp_samples);
     if (current_error < best_error) {
       best_error = current_error;
-      // Copy the compressed samples into the compressed data buffer + 1, so
-      // that we can store the filter mode in the first byte.
-      std::copy(current_compressed_data.begin(),
-          current_compressed_data.begin() + samples, compressed_data + 1);
-      // Copy out the last two comp->decomp samples.
-      std::copy(current_last_decomp_samples.begin(),
-          current_last_decomp_samples.end(), last_decomp_samples->begin());
-      *compressed_data = filter_mode;
+      best_filter = filter_mode;
     }
   }
+
+  // Run the compression with the winning filter mode on this block.
+  BRRFilter filter(best_filter);
+  (void) GreedyBlockBRRSampleCompress(sample_data, d_sample_minus_1,
+      d_sample_minus_2, samples, filter, current_compressed_data.begin(),
+      &current_last_decomp_samples);
+
+  // How many bytes (including potentially only half of the last one) will our
+  // compressed data occupy
+  int copy_bytes = samples / 2;
+  copy_bytes += copy_bytes & 1;
+
+  std::copy(current_compressed_data.begin(), 
+      current_compressed_data.begin() + copy_bytes, compressed_data + 1);
+
+  // Copy out the last two comp->decomp samples.
+  std::copy(current_last_decomp_samples.begin(),
+      current_last_decomp_samples.end(), last_decomp_samples->begin());
+
+  *compressed_data = best_filter;
 }
 
 LoNibble SignExtendNibble(LoNibble x) {
   // Sign extend sample_0 so that int casting will treat it as a signed byte
   // were it a signed nibble.
-  return x | (0xf0 * ((x >> 4) & 1));
+  return x | (0xf0 * ((x >> 3) & 1));
 }
 } // namespace
 
@@ -262,14 +278,15 @@ std::vector<int8_t> BRRCompress(const std::vector<int16_t>& sample_data) {
     int total_samples = static_cast<int>((sample_end > sample_data.size()) ? 
         (sample_data.size() - sample_data_start) : 16);
     
-    // We reserve enough space for the incoming samples we'll compress plus a 
-    // byte for the filter.
-    comp_data.resize(comp_data.size() + total_samples + 1);
+    // How many bytes (rounded up to be even since each byte stores 2 samples),
+    // will our compressed data occupy PLUS the filter.
+    int compressed_bytes = total_samples / 2;
+    compressed_bytes = (compressed_bytes + (compressed_bytes & 1)) + 1;
+    comp_data.resize(comp_data.size() + compressed_bytes);
 
     BlockBRRCompress(sample_data.begin() + sample_data_start, total_samples, 
-      comp_data.begin() + sample_data_start, &last_decomp_samples);
+      comp_data.end() - compressed_bytes, &last_decomp_samples);
   }
-
   return comp_data;
 }
 

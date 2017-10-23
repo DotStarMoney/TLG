@@ -20,14 +20,16 @@ namespace audio {
 
 template <class SampleT>
 class SampleSupplier {
- protected:
-  explicit SampleSupplier(Format format) : format_(format) {}
-
+ public:
   typedef typename std::vector<SampleT>::iterator Iter;
   virtual util::Status ProvideNextSamples(
-      Iter samples_start, 
-      uint32_t sample_size,
-      uint32_t sample_clock) = 0;
+    Iter samples_start,
+    uint32_t sample_size,
+    uint32_t sample_clock) = 0;
+  
+  const Format& format() { return format_; }
+ protected:
+  explicit SampleSupplier(Format format) : format_(format) {}
 
   Format format_;
 };
