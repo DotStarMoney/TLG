@@ -26,41 +26,52 @@ int PlaybackTest(audio::StereoSampler16* sampler,
   SDL_PauseAudioDevice(dev, 0);
   //
 
-  const int total_samples = 1e6;
-  const int total_bytes = total_samples * 2;
-  const int total_stereo_samples = total_samples * 2;
+  std::vector<int16_t> sample_data((64000 + 64000) * 2);
 
-  std::cout << "Generating " << total_samples << " samples." << std::endl;
-  std::vector<int16_t> sample_data(total_stereo_samples);
-  sampler->ProvideNextSamples(sample_data.begin(), total_samples, 0);
+  std::cout << "Generating 64000 samples." << std::endl;
+  sampler->ProvideNextSamples(sample_data.begin(), 64000, 0);
+
+  std::cout << "Releasing." << std::endl;
+  sampler->Release();
+
+  std::cout << "Generating 64000 more samples." << std::endl;
+  sampler->ProvideNextSamples(sample_data.begin() + 128000, 64000, 64000);
 
   std::cout << "Queueing entire buffer." << std::endl;
-  int success = SDL_QueueAudio(dev, sample_data.data(), total_bytes);
+  if (SDL_QueueAudio(dev, sample_data.data(), sample_data.size() * 2) != 0) {
+    return 1;
+  }
 
-  std::cout << "Waiting for 5s." << std::endl;
-  SDL_Delay(10000);
+  std::cout << "Waiting for 2.5s." << std::endl;
+  SDL_Delay(2500);
 
   //
   SDL_CloseAudioDevice(dev);
-  return success;
+  return 0;
 }
 
 int main(int argc, char** argv) {
 
+  std::cout << "Encoding BRR file...";
+  ASSERT_EQ(sdl::util::WavToBRR(
+          "res/littlelead.wav",
+          "res/littlelead.brr",
+          3114,
+          3955,
+          0, 100, 128, 100), 
+      util::OkStatus);
+
   std::cout << "Reading BRR." << std::endl;
-  auto sample = audio::LoadBRR("res/vlaclose16m32000.brr").ConsumeValueOrDie();
+  auto sample = audio::LoadBRR("res/littlelead.brr").ConsumeValueOrDie();
 
   audio::AudioSystem audio_system(audio::_32K);
   audio::StereoSampler16 sampler(&audio_system);
 
   sampler.Arm(sample.get());
-
-  sampler.Play();
-
+ 
+  sampler.Play(0);
   return PlaybackTest(&sampler, *sample.get());
 
-  // TODO(?): Move "too high" check of sampler into IterateNextSample
-  // TODO(?): Test looping
   // TODO(?): Create the sequence format, write a player.
 
   // TODO(?): Build Clang Fix or whatever for Google style guide into workflow

@@ -49,7 +49,7 @@ class StereoSampler16 : public AudioComponent, public SampleSupplier<int16_t> {
   void Release();
 
   // Sets playback panning. [pan] is from -1 to 1, corresponding to an all the
-  // way left, to an all the way right panning.
+  // way left, and to an all the way right panning.
   void SetPan(float pan);
 
   // Sets the playback pitch shift in semitones. [semitone_shift] must be
@@ -77,7 +77,6 @@ class StereoSampler16 : public AudioComponent, public SampleSupplier<int16_t> {
     uint32_t sample_clock) override;
 
  private:
-
   State state_;
 
   // Operation of the sampler is undefined when status_ is not ok.
@@ -91,11 +90,12 @@ class StereoSampler16 : public AudioComponent, public SampleSupplier<int16_t> {
   float pan_;
   // Pitch shift in semitones.
   float pitch_shift_;
-  // A value between 0 and 1 (added to playback_volume_) used to produce a
-  // volume mapping for each sample. Samples are mapped by adding volume_ to
-  // playback_volume_ then multiplying this value with the sample. In this way,
-  // there is no volume change when volume_ and playback_volume_ = 0.5, and
-  // the volume is doubled when both are set to 1.0.
+  // A value between 0 and 1 (multiplied with playback_volume_) used to produce
+  // a volume mapping for each sample. Samples are mapped by multiplying
+  // volume_ by playback_volume_ then multiplying this value by 4 then by the
+  // sample value. In this way, there is no volume change when volume_ and
+  // playback_volume_ = 0.5, and the volume is quadruplued when both are set to
+  // 1.0.
   float volume_;
   // Vibrato range in semitones.
   float vibrato_range_;
@@ -103,8 +103,8 @@ class StereoSampler16 : public AudioComponent, public SampleSupplier<int16_t> {
   // A pitch shift in semitones that is the base pitch offset used to compute
   // a playback rate for sample playback.
   float playback_pitch_shift_;
-  // Added to volume_ and optionally set on each playback. See docs for volume_
-  // for mapping details.
+  // Multiplied with volume_ and optionally set on each playback. See docs for 
+  // volume_ for mapping details.
   float playback_volume_;
   // The position in samples of the playback cursor. It is this that is
   // actually advanced by the playback rate.
@@ -114,7 +114,7 @@ class StereoSampler16 : public AudioComponent, public SampleSupplier<int16_t> {
   uint32_t playback_elapsed_samples_;
   // The elapsed samples since playback began of when this sample began its
   // release.
-  uint32_t playback_release_samples_;
+  uint32_t playback_released_samples_;
   // True if this sample is releasing, false otherwise.
   bool releasing_;
 
@@ -152,14 +152,14 @@ class StereoSampler16 : public AudioComponent, public SampleSupplier<int16_t> {
   // starts at 0.
   double release_from_;
 
-  // Given the current sample playback position, get a linearly interpolated
+  // At the current sample playback position, get a linearly interpolated
   // sample given the playback rate.
   int16_t GetSample(double playback_position, double playback_rate) const;
 
-  // Given a playback rate, return the next sample this sampler would emit
-  // while also updating the state. This will set playing_ = false when sample
+  // Given a semitone_shift, return the next sample this sampler would emit
+  // while also updating the state. This will set state_ = kStopped when sample
   // playback has ended based on the current configuration.
-  int16_t IterateNextSample(double playback_rate);
+  int16_t IterateNextSample(float semitone_shift);
   // The actual rate of playback. Instead of just using the desired playback
   // rate explicitly, we update a playback target on each active 
   // (state_ = kPlaying) invocation of IterateNextSample to slightly smooth the

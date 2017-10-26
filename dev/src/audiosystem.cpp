@@ -6,7 +6,7 @@
 namespace audio {
 namespace {
 
-constexpr float kOscillatorRateHz = 4.0;
+constexpr float kOscillatorRateHz = 8.0;
 
 } // namespace
 

@@ -65,7 +65,7 @@ StereoSampler16::StereoSampler16(AudioSystem* const parent) :
     playback_position_(0.0),        // set the playback cursor to 0
     playback_elapsed_samples_(0),   // no elapsed samples have gone by, so
                                     //   elapsed samples is 0
-    playback_release_samples_(0),   // we only set the elapsed release time if
+    playback_released_samples_(0),  // we only set the elapsed release time if
                                     //   we call Release, and we only care
                                     //   about the elapsed release time if we
                                     //   call Release, so we default it to 0
@@ -128,8 +128,8 @@ std::pair<double, bool> StereoSampler16::GetEnvelopeValue(
   if (releasing_) {
     const double rate_of_release = sample_->envelope().sustain / 
         sample_->envelope().release;
-    const double release_value = release_from_ - elapsed_samples * 
-        rate_of_release;
+    const double release_value = release_from_ -
+        ((elapsed_samples - playback_released_samples_) * rate_of_release);
     if (release_value <= 0) return {0, false};
     return {release_value, true};
   }
@@ -138,12 +138,14 @@ std::pair<double, bool> StereoSampler16::GetEnvelopeValue(
     release_from_ = elapsed_samples / sample_->envelope().attack;
     return {release_from_, true};
   }
+
   elapsed_samples -= sample_->envelope().attack;
   if (elapsed_samples < sample_->envelope().decay) {
     release_from_ = 1 - (elapsed_samples / sample_->envelope().decay) *
         (1 - sample_->envelope().sustain);
     return {release_from_, true};
   }
+  
   release_from_ = sample_->envelope().sustain;
   return {release_from_, true};
 }
@@ -158,10 +160,10 @@ int16_t StereoSampler16::GetSample(double playback_position,
   if (playback_rate > 4.0) {
     // log2(x) / 2 == log4(x)
     level = static_cast<int>(std::floor(std::log2(playback_rate) * 0.5));
-    if (level >= sample_->pyramid_levels()) {
-      level = sample_->pyramid_levels() - 1;
-    }
-    double octave_shift = std::pow(4.0, level);
+    // We don't allow playback in frequencies above what is contained in the
+    // highest frequency pyramid level, so we don't need to bounds check level
+    // for safe future array accesses.
+    const double octave_shift = std::pow(4.0, level);
     playback_position_adj = playback_position / octave_shift;
     playback_rate_adj = playback_rate / octave_shift;
   }
@@ -171,28 +173,26 @@ int16_t StereoSampler16::GetSample(double playback_position,
   double sample_value = 0;
 
   if (sample_->has_loop()) {
-    double loop_begin = sample_->loop_begin(level);
-    double loop_length = sample_->loop_length(level);
+    const double loop_begin = sample_->loop_begin(level);
+    const double loop_length = sample_->loop_length(level);
     if (window_start > loop_begin) {
       window_start = std::fmod(window_start - loop_begin, loop_length) +
           loop_begin;
     }
     window_end = window_start + playback_rate_adj;
-    double loop_end = loop_begin + loop_length;
+    const double loop_end = loop_begin + loop_length;
     if ((window_end - window_start) > loop_length) {
       // In the weird case that the window is larger than the loop, MAKE the
       // window the loop
       window_start = loop_begin;
       window_end = loop_end;
-    } else {
+    } else if (window_end > loop_end) {
       // If the window exceeds the loop end, accumulate the wrap-around bit of
       // the window
-      if (window_end > loop_end) {
-        sample_value += IntegratePiecewiseLinearSamples(sample_->data(level), 
-            loop_begin, window_end - loop_end);
-        // Finally crop the window end to the loop end
-        window_end = loop_end;
-      }
+      sample_value += IntegratePiecewiseLinearSamples(sample_->data(level), 
+          loop_begin, loop_begin + (window_end - loop_end));
+      // Finally crop the window end to the loop end
+      window_end = loop_end;
     }
   } else {
     window_end = window_start + playback_rate_adj;
@@ -203,19 +203,29 @@ int16_t StereoSampler16::GetSample(double playback_position,
   return static_cast<int16_t>(sample_value / playback_rate_adj);
 }
 
-int16_t StereoSampler16::IterateNextSample(double playback_rate) {
+int16_t StereoSampler16::IterateNextSample(float semitone_shift) {  
   if (state_ != kPlaying) {
     return 0;
   }
+
+  const float playback_rate = SemitonesToFreqMul(semitone_shift);
   if (playback_rate_smooth_ == kInitialRateTarget) {
     playback_rate_smooth_ = playback_rate;
-  } else {
-    playback_rate_smooth_ = (playback_rate - playback_rate_smooth_) * 
-        (1.0 - kPlaybackRatePortamento) + playback_rate_smooth_;
+  }
+  else {
+    playback_rate_smooth_ = (playback_rate - playback_rate_smooth_) *
+      (1.0 - kPlaybackRatePortamento) + playback_rate_smooth_;
+  }
+
+  int16_t val = 0;
+  // Getting interpolated samples at high frequencies is expensive, so we limit
+  // the maximum frequency to that which requires at most 4 samples of the
+  // source sample data (x4 so two octaves or 24 semitones).
+  if (semitone_shift < (sample_->pyramid_levels() * 24)) {
+    val = GetSample(playback_position_, playback_rate_smooth_);
   }
 
   std::pair<double, bool> env = GetEnvelopeValue(playback_elapsed_samples_);
-  int16_t val = GetSample(playback_position_, playback_rate_smooth_);
   
   // Advance both the elapsed samples since playback started and the cursor to
   // the sample data.
@@ -242,7 +252,7 @@ util::Status StereoSampler16::ProvideNextSamples(
     return util::OkStatus;
   }
   
-  const double volume_multiplier = playback_volume_ + volume_;
+  const double volume_multiplier = (playback_volume_ * volume_) * 4.0;
   const float semitone_offset = playback_pitch_shift_ + pitch_shift_;
   const float pan_percent_r = (pan_ + 1.0f) * 0.5f;
   do {
@@ -250,10 +260,10 @@ util::Status StereoSampler16::ProvideNextSamples(
     const float final_offset = semitone_offset + 
         parent_->GetOscillatorValue(sample_clock) * vibrato_range_;
 
-    sample = IterateNextSample(SemitonesToFreqMul(final_offset));
+    sample = IterateNextSample(final_offset);
     
-    sample = static_cast<int16_t>(std::clamp(static_cast<double>(sample) * 
-        volume_multiplier, -32768.0, 32767.0));
+    sample = static_cast<int16_t>(std::round(std::clamp(
+        static_cast<double>(sample) * volume_multiplier, -32768.0, 32767.0)));
 
     *(samples_start++) = static_cast<int16_t>(sample * (1.0 - pan_percent_r));
     *(samples_start++) = static_cast<int16_t>(sample * pan_percent_r);
@@ -318,7 +328,7 @@ void StereoSampler16::Pause() {
 void StereoSampler16::Release() {
   if ((state_ != kPlaying) || releasing_) return;
   releasing_ = true;
-  playback_release_samples_ = playback_elapsed_samples_;
+  playback_released_samples_ = playback_elapsed_samples_;
 }
 
 void StereoSampler16::SetPan(float pan) {

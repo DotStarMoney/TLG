@@ -63,12 +63,16 @@ namespace audio {
 util::StatusOr<std::unique_ptr<MonoSampleData16>> LoadBRR(
     std::string_view filename, bool opt_for_resynth = true);
 
+// loop_start and loop_end are the inclusive loop bounds in samples.
 // If no loop, pass loop_start = loop_end = 0.
 // If no envelope, pass attack = sustain = decay = release = 0
+//
+// attack, decay, and relase, are all in units of ms. sustain is a percentage
+// scaled by 255.
 util::Status SaveBRR(std::string_view filename,
     const std::vector<int16_t>& samples, int sampling_rate, 
     uint32_t loop_start = 0, uint32_t loop_end = 0, uint16_t attack = 0,
-    uint16_t decay = 0, uint8_t sustain = 0, uint16_t release = 0);
+    uint16_t decay = 0, uint8_t sustain = 255, uint16_t release = 0);
 
 } // namespace audio
 

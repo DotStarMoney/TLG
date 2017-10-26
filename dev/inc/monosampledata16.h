@@ -81,7 +81,7 @@ class MonoSampleData16 {
       const LoopInfo& loop = DefaultLoopInfo) {
     type_assert::IsConvertibleTo<SampleData, DataT>();
 
-    if (((loop.bounds.begin + loop.bounds.length) >=
+    if (((loop.bounds.begin + loop.bounds.length) >
             static_cast<SampleData>(data).size()) || 
         (loop.bounds.begin < 0.0)) {
       return util::FailedPreconditionError("Loop bounds exceed sample data.");

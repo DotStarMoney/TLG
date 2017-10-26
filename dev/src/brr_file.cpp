@@ -19,7 +19,7 @@ namespace {
 constexpr uint32_t kBRRTag = 0x20525242;
 
 constexpr uint8_t kLoopFlag = 1;
-constexpr uint8_t kEnvelopeFlag = 1;
+constexpr uint8_t kEnvelopeFlag = 2;
 
 pstruct BRRHeader {
   uint32_t tag;
@@ -116,7 +116,7 @@ Status SaveBRR(string_view filename, const vector<int16_t>& samples,
     }
     brr_header.mode |= kLoopFlag;
   }
-  if ((attack != 0) || (decay != 0) || (sustain != 0) || (release != 0)) {
+  if ((attack != 0) || (decay != 0) || (sustain != 255) || (release != 0)) {
     brr_header.mode |= kEnvelopeFlag;
   }
 
