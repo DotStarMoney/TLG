@@ -8,8 +8,7 @@ namespace util {
 namespace reflect {
 
 template<typename T>
-class HasToString
-{
+class HasToString {
  private:
   template<typename U, std::string (U::*)() const> struct SFINAE {};
   template<typename U> static int8_t Test(SFINAE<U, &U::ToString>*);

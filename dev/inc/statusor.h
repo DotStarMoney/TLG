@@ -21,10 +21,7 @@ class StatusOr final {
     static_assert(std::is_convertible<ForwardT, T>::value ||
       std::is_same<ForwardT, Status>::value, "This StatusOr cannot be "
           "constructed from the provided type.");
-    // MSVC does not (as of 8/23/2017) support "if constexpr", so this is a bit
-    // ugly.
-    constexpr auto is_status = std::is_same<ForwardT, Status>::value;
-    if (is_status) {
+    if constexpr(std::is_same<ForwardT, Status>::value) {
       // TODO(?): Provide a useful log from this assertion
       ASSERT(!std::get<Status>(statusor_).ok());
     }

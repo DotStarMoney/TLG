@@ -5,7 +5,7 @@
 #include <string_view>
 #include <vector>
 
-#include "monosampledata16.h"
+#include "sampledatam16.h"
 #include "status.h"
 #include "statusor.h"
 
@@ -60,7 +60,7 @@ namespace audio {
 
 // Set opt_for_resynth to true if the returned sample should be optimized for
 // playback at higher frequencies.
-util::StatusOr<std::unique_ptr<MonoSampleData16>> LoadBRR(
+util::StatusOr<std::unique_ptr<SampleDataM16>> LoadBRR(
     std::string_view filename, bool opt_for_resynth = true);
 
 // loop_start and loop_end are the inclusive loop bounds in samples.

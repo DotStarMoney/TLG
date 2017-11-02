@@ -1,12 +1,12 @@
-#ifndef AUDIO_STEROSAMPLER16_H_
-#define AUDIO_STEROSAMPLER16_H_
+#ifndef AUDIO_SAMPLERS16_H_
+#define AUDIO_SAMPLERS16_H_
 
 #include <cstdint>
 #include <memory>
 
 #include "audiosystem.h"
 #include "fixed_point.h"
-#include "monosampledata16.h"
+#include "sampledatam16.h"
 #include "samplesupplier.h"
 #include "status.h"
 
@@ -20,9 +20,9 @@ namespace audio {
 // ProvideNextSamples, and accessors must be externally synchronized.
 //
 // Semitones herein are used in the context of twelve-tone equal temperament.
-class StereoSampler16 : public AudioComponent, public SampleSupplier<int16_t> {
+class SamplerS16 : public AudioComponent, public SampleSupplier<int16_t> {
  public:
-  explicit StereoSampler16(AudioSystem* const parent);
+  explicit SamplerS16(AudioSystem* const parent);
 
   enum State {
     kStopped = 0,
@@ -33,7 +33,7 @@ class StereoSampler16 : public AudioComponent, public SampleSupplier<int16_t> {
   // Call Stop and prepare a sample for playback. Playing a sample when
   // disarmed is not an error and results in silence. Arming a nullptr will
   // default to playing silence.
-  void Arm(const MonoSampleData16* sample);
+  void Arm(const SampleDataM16* sample);
 
   // Stop playback and prepare the sampler for another playback. 
   void Stop();
@@ -121,23 +121,23 @@ class StereoSampler16 : public AudioComponent, public SampleSupplier<int16_t> {
   // A reference to the sample data we play, nullptr if we don't have a sample.
   //
   // Not owned.
-  const MonoSampleData16* sample_;
+  const SampleDataM16* sample_;
   
   // Get a sample by its index, returning 0 for samples outside the range of
   // the provided data.
-  int16_t GetSampleByIndex(const MonoSampleData16::SampleData& data, 
+  int16_t GetSampleByIndex(const SampleDataM16::SampleData& data,
       uint32_t index) const;
 
   // A method that, given a slice of a sampling window confined to a single
   // sample, returns the integral of the linearly interpolated sample data
   // over the window slice.
-  double IntegrateWindowSlice(const MonoSampleData16::SampleData& data,
+  double IntegrateWindowSlice(const SampleDataM16::SampleData& data,
       double window_start, double window_end) const;
 
   // Treating data as a piecewise linear curve with each sample 1.0 units from
   // the previous, integrate over the window.
   double IntegratePiecewiseLinearSamples(
-      const MonoSampleData16::SampleData& data, double window_start,
+      const SampleDataM16::SampleData& data, double window_start,
       double window_end) const;
 
   // Returns the volume percent specified by the envelope. This method uses the 
@@ -173,4 +173,4 @@ class StereoSampler16 : public AudioComponent, public SampleSupplier<int16_t> {
 };
 } // namespace audio
  
-#endif // AUDIO_STEREOSAMPLER16_H_
+#endif // AUDIO_SAMPLERS16_H_

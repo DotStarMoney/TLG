@@ -27,6 +27,7 @@ set(HDR_FILES
 	stereosampler16.h
 	strcat.h
 	tostring.h
+	stereosequencer16.h
 	
 	PARENT_SCOPE)
 

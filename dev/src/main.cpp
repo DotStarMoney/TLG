@@ -4,12 +4,12 @@
 #include "assert.h"
 #include "sdl_audio_utils.h"
 #include "brr_file.h"
-#include "stereosampler16.h"
+#include "samplers16.h"
 #include "audiosystem.h"
 #include "SDL.h"
 
-int PlaybackTest(audio::StereoSampler16* sampler,
-    const audio::MonoSampleData16& sampler_data) {
+int PlaybackTest(audio::SamplerS16* sampler,
+    const audio::SampleDataM16& sampler_data) {
   if (SDL_Init(SDL_INIT_AUDIO) < 0) return 1;
 
   SDL_AudioSpec want, have;
@@ -58,19 +58,30 @@ int main(int argc, char** argv) {
           "res/littlelead.brr",
           3114,
           3955,
-          0, 100, 128, 100), 
+          20, 100, 128, 200), 
       util::OkStatus);
 
   std::cout << "Reading BRR." << std::endl;
-  auto sample = audio::LoadBRR("res/littlelead.brr").ConsumeValueOrDie();
+  auto sample = audio::LoadBRR("res/littlelead.brr", true).ConsumeValueOrDie();
 
   audio::AudioSystem audio_system(audio::_32K);
-  audio::StereoSampler16 sampler(&audio_system);
+  audio::SamplerS16 sampler(&audio_system);
 
   sampler.Arm(sample.get());
  
-  sampler.Play(0);
+  sampler.SetVibratoRange(0.5);
+  sampler.Play(30);
   return PlaybackTest(&sampler, *sample.get());
+
+  // Sequencer implementation:
+  // ProvideNextSamples:
+  //    For each channel, we observe the chronological sequence of its note,
+  //    parameter, and also global events. We keep pulling up samples until we
+  //    would pull past the number of samples passed into the original
+  //    invocation of ProvideNextSamples. We leave the channel cursors where
+  //    they are so we can pull up in the next call to PNS.
+
+
 
   // TODO(?): Create the sequence format, write a player.
 

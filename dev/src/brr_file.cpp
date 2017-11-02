@@ -42,7 +42,7 @@ pstruct BRREnvelope {
 
 } // namespace
 
-StatusOr<unique_ptr<MonoSampleData16>> LoadBRR(string_view filename,
+StatusOr<unique_ptr<SampleDataM16>> LoadBRR(string_view filename,
     bool opt_for_resynth) {
   std::ifstream file(filename.data(), std::ios::binary);
   
@@ -54,11 +54,11 @@ StatusOr<unique_ptr<MonoSampleData16>> LoadBRR(string_view filename,
     return util::FormatMismatchError("Not a valid BRR file, tag is wrong.");
   }
 
-  MonoSampleData16::LoopInfo loop = MonoSampleData16::DefaultLoopInfo;
-  MonoSampleData16::ADSRSeconds envelope = MonoSampleData16::DefaultEnvelope;
+  SampleDataM16::LoopInfo loop = SampleDataM16::DefaultLoopInfo;
+  SampleDataM16::ADSRSeconds envelope = SampleDataM16::DefaultEnvelope;
 
   if (brr_header.mode & kLoopFlag) {
-    loop.mode = MonoSampleData16::LoopMode::LOOP;
+    loop.mode = SampleDataM16::LoopMode::LOOP;
     BRRLoop brr_loop;
     file.read(reinterpret_cast<char*>(&brr_loop), sizeof(BRRLoop));
     if (!file) return util::IOError("Reading BRR file failed.");
@@ -97,7 +97,7 @@ StatusOr<unique_ptr<MonoSampleData16>> LoadBRR(string_view filename,
   // must check for this and resize if neccessary
   if (sample_data.size() > brr_header.sample_size) sample_data.pop_back();
 
-  return MonoSampleData16::Create(sample_data, brr_header.sampling_rate, 
+  return SampleDataM16::Create(sample_data, brr_header.sampling_rate,
       opt_for_resynth, envelope, loop);
 }
 

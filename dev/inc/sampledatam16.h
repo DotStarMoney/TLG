@@ -1,5 +1,5 @@
-#ifndef AUDIO_MONOSAMPLEDATA16_H_
-#define AUDIO_MONOSAMPLEDATA16_H_
+#ifndef AUDIO_SAMPLEDATAM16_H_
+#define AUDIO_SAMPLEDATAM16_H_
 
 #include <memory>
 #include <vector>
@@ -9,7 +9,7 @@
 #include "static_type_assert.h"
 #include "statusor.h"
 
-// A container for sample and old-school playback data. 
+// An immutable container for sample and old-school playback data. 
 //
 // Another example where we use floats when doubles would be preferred only
 // because low-precision might color the output sound in an interesting way.
@@ -19,7 +19,7 @@
 
 namespace audio {
 
-class MonoSampleData16 {
+class SampleDataM16 {
  public:
   typedef std::vector<int16_t> SampleData;
   
@@ -75,7 +75,7 @@ class MonoSampleData16 {
   // stores sample data and doesn't just reference it (when possible, we want
   // to MOVE vector data into it).
   template <class DataT>
-  static util::StatusOr<std::unique_ptr<MonoSampleData16>> Create(DataT&& data, 
+  static util::StatusOr<std::unique_ptr<SampleDataM16>> Create(DataT&& data, 
       int sample_rate, bool build_pyramid = false,
       const ADSRSeconds& envelope = DefaultEnvelope, 
       const LoopInfo& loop = DefaultLoopInfo) {
@@ -99,7 +99,7 @@ class MonoSampleData16 {
 
     ADSRSamples samp_envelope = EnvSecondsToSamples(envelope, sample_rate);
  
-    return std::unique_ptr<MonoSampleData16>(new MonoSampleData16(
+    return std::unique_ptr<SampleDataM16>(new SampleDataM16(
         std::move(data_pyramid), sample_rate, samp_envelope, loop.mode,
         std::move(loop_bounds_pyramid)));
   }
@@ -135,7 +135,7 @@ class MonoSampleData16 {
 
   // More perfect forwarding...
   template <class DataPyramidT, class LoopBoundsPyramidT>
-  MonoSampleData16(DataPyramidT&& data_pyramid, int sample_rate,
+  SampleDataM16(DataPyramidT&& data_pyramid, int sample_rate,
       const ADSRSamples& envelope, LoopMode loop_mode, 
       LoopBoundsPyramidT&& loop_bounds_pyramid) :
     pyramid_levels_(
@@ -183,4 +183,4 @@ class MonoSampleData16 {
 };
 
 } // namespace audio
-#endif // AUDIO_MONOSAMPLEDATA16_H_
+#endif // AUDIO_SAMPLEDATAM16_H_

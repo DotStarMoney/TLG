@@ -1,10 +1,10 @@
-#include "monosampledata16.h"
+#include "sampledatam16.h"
 
 #include <math.h>
 
 namespace audio {
 
-MonoSampleData16::ADSRSamples MonoSampleData16::EnvSecondsToSamples(
+SampleDataM16::ADSRSamples SampleDataM16::EnvSecondsToSamples(
     const ADSRSeconds& envelope, int sampling_rate) {
   return {
       envelope.attack * sampling_rate,
@@ -13,7 +13,7 @@ MonoSampleData16::ADSRSamples MonoSampleData16::EnvSecondsToSamples(
       envelope.release * sampling_rate };
 }
 
-MonoSampleData16::LoopBoundsQPyramid MonoSampleData16::BuildLoopBoundsPyramid(
+SampleDataM16::LoopBoundsQPyramid SampleDataM16::BuildLoopBoundsPyramid(
     const LoopBounds& loop_bounds) {
   LoopBoundsQPyramid pyramid = {loop_bounds};
   pyramid.resize(kQuadFreqPyramidLevels);
@@ -24,7 +24,7 @@ MonoSampleData16::LoopBoundsQPyramid MonoSampleData16::BuildLoopBoundsPyramid(
   return pyramid;
 }
 
-MonoSampleData16::SampleData MonoSampleData16::QuadFreqSampleData(
+SampleDataM16::SampleData SampleDataM16::QuadFreqSampleData(
     const SampleData& data) {
   SampleData new_data(static_cast<uint32_t>(std::ceil(data.size() * 0.25)));
 

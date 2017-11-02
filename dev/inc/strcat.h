@@ -43,8 +43,7 @@ std::string StrCat(T0 p0, T1 p1) {
   if (buffer.empty()) {
     concat.reserve(concat.size() + src_string.length());
     return concat.append(src_string);
-  }
-  else {
+  } else {
     concat.reserve(concat.size() + buffer.length());
     return concat.append(buffer);
   }

@@ -1,4 +1,4 @@
-#include "stereosampler16.h"
+#include "samplers16.h"
 
 #include <algorithm>
 #include <cmath>
@@ -50,7 +50,7 @@ bool IsValidVolume(float volume) {
 } // namespace
 
 // We've got a lot of parameters to initialize here, see the breakdown:
-StereoSampler16::StereoSampler16(AudioSystem* const parent) :
+SamplerS16::SamplerS16(AudioSystem* const parent) :
     AudioComponent(parent), 
     SampleSupplier({INT16, STEREO, parent->sample_rate()}), 
     state_(kStopped),               // we aren't playing anything...
@@ -79,14 +79,14 @@ StereoSampler16::StereoSampler16(AudioSystem* const parent) :
         kInitialRateTarget) {}      //   playback rate to the incoming rate the
                                     //   first time we see one.
     
-int16_t StereoSampler16::GetSampleByIndex(
-    const MonoSampleData16::SampleData& data, uint32_t index) const {
+int16_t SamplerS16::GetSampleByIndex(
+    const SampleDataM16::SampleData& data, uint32_t index) const {
   if (index >= data.size()) return 0;
   return data[index];
 }
 
-double StereoSampler16::IntegrateWindowSlice(
-    const MonoSampleData16::SampleData& data, double window_start,
+double SamplerS16::IntegrateWindowSlice(
+    const SampleDataM16::SampleData& data, double window_start,
     double window_end) const {
   const uint32_t sample_index = static_cast<uint32_t>(window_start);
   const int16_t s0 = GetSampleByIndex(data, sample_index);
@@ -102,8 +102,8 @@ double StereoSampler16::IntegrateWindowSlice(
   return 0.5 * (s0 + s1) * (window_end - window_start);
 }
 
-double StereoSampler16::IntegratePiecewiseLinearSamples(
-    const MonoSampleData16::SampleData& data, double window_start, 
+double SamplerS16::IntegratePiecewiseLinearSamples(
+    const SampleDataM16::SampleData& data, double window_start,
     double window_end) const {
   uint32_t snap_start = static_cast<uint32_t>(window_start);
   const uint32_t first_snap_end = snap_start + 1;
@@ -123,7 +123,7 @@ double StereoSampler16::IntegratePiecewiseLinearSamples(
   return acc + IntegrateWindowSlice(data, snap_start, window_end);
 }
 
-std::pair<double, bool> StereoSampler16::GetEnvelopeValue(
+std::pair<double, bool> SamplerS16::GetEnvelopeValue(
     double elapsed_samples) {
   if (releasing_) {
     const double rate_of_release = sample_->envelope().sustain / 
@@ -150,7 +150,7 @@ std::pair<double, bool> StereoSampler16::GetEnvelopeValue(
   return {release_from_, true};
 }
 
-int16_t StereoSampler16::GetSample(double playback_position,
+int16_t SamplerS16::GetSample(double playback_position,
     double playback_rate) const {
   double playback_position_adj = playback_position;
   double playback_rate_adj = playback_rate;
@@ -203,7 +203,7 @@ int16_t StereoSampler16::GetSample(double playback_position,
   return static_cast<int16_t>(sample_value / playback_rate_adj);
 }
 
-int16_t StereoSampler16::IterateNextSample(float semitone_shift) {  
+int16_t SamplerS16::IterateNextSample(float semitone_shift) {
   if (state_ != kPlaying) {
     return 0;
   }
@@ -243,7 +243,7 @@ int16_t StereoSampler16::IterateNextSample(float semitone_shift) {
   return static_cast<int16_t>(std::round(val * env.first));
 }
 
-util::Status StereoSampler16::ProvideNextSamples(
+util::Status SamplerS16::ProvideNextSamples(
     Iter samples_start, uint32_t sample_size, uint32_t sample_clock) {
  
   if (state_ != kPlaying) {
@@ -272,7 +272,7 @@ util::Status StereoSampler16::ProvideNextSamples(
   return util::OkStatus;
 }
 
-void StereoSampler16::Arm(const MonoSampleData16* sample) {
+void SamplerS16::Arm(const SampleDataM16* sample) {
   Stop();
   sample_ = sample;
   if (sample == nullptr) return;
@@ -280,7 +280,7 @@ void StereoSampler16::Arm(const MonoSampleData16* sample) {
       audio::Format({INT16, MONO, format_.sampling_rate}));
 }
 
-void StereoSampler16::Stop() {
+void SamplerS16::Stop() {
   state_ = kStopped;
   playback_position_ = 0.0;
   playback_elapsed_samples_ = 0;
@@ -288,7 +288,7 @@ void StereoSampler16::Stop() {
   release_from_ = 0.0;
 }
 
-void StereoSampler16::Play(float semitone_shift, float volume) {
+void SamplerS16::Play(float semitone_shift, float volume) {
   // Since we check for any malformed input parameters to the sampler, we can
   // assume we're okay at this point.
   status_ = util::OkStatus;
@@ -320,18 +320,18 @@ void StereoSampler16::Play(float semitone_shift, float volume) {
   
 }
 
-void StereoSampler16::Pause() {
+void SamplerS16::Pause() {
   if (state_ != kPlaying) return;
   state_ = kPaused;
 }
 
-void StereoSampler16::Release() {
+void SamplerS16::Release() {
   if ((state_ != kPlaying) || releasing_) return;
   releasing_ = true;
   playback_released_samples_ = playback_elapsed_samples_;
 }
 
-void StereoSampler16::SetPan(float pan) {
+void SamplerS16::SetPan(float pan) {
   if ((pan < -1.0) || (pan > 1.0)) {
     status_ = util::InvalidArgumentError(
         StrCat("Panning parameter must be in range [-1.0, 1.0], got ", 
@@ -341,7 +341,7 @@ void StereoSampler16::SetPan(float pan) {
   pan_ = pan;
 }
 
-void StereoSampler16::SetPitchShift(float semitone_shift) {
+void SamplerS16::SetPitchShift(float semitone_shift) {
   if (!IsValidPitchShift(semitone_shift)) {
     status_ = util::InvalidArgumentError(
         "Provided pitch shift is not finite.");
@@ -350,7 +350,7 @@ void StereoSampler16::SetPitchShift(float semitone_shift) {
   pitch_shift_ = semitone_shift;
 }
 
-void StereoSampler16::SetVolume(float volume) {
+void SamplerS16::SetVolume(float volume) {
   if (!IsValidVolume(volume)) {
     status_ = util::InvalidArgumentError(
       StrCat("Volume parameter must be in range [0.0, 1.0], got ",
@@ -360,7 +360,7 @@ void StereoSampler16::SetVolume(float volume) {
   volume_ = volume;
 }
 
-void StereoSampler16::SetVibratoRange(float range_semitones) {
+void SamplerS16::SetVibratoRange(float range_semitones) {
   if (!IsValidPitchShift(range_semitones)) {
     status_ = util::InvalidArgumentError(
       "Provided vibrato range is not finite.");
