@@ -10,11 +10,6 @@ using ::util::Status;
 using ::util::StatusOr;
 using ::util::StrCat;
 
-// TODO(?): Add reference counting to sampledatam16
-
-//
-// Herein "streams" refer to ZSequence byte data
-//
 namespace audio {
 namespace {
 
@@ -32,68 +27,6 @@ uint16_t TakeUBytePercentageAndInc(uint16_t value, ZSequence::Stream* stream) {
       (static_cast<double>(GetUByteAndInc(stream)) / 255.0));
 }
 
-// An articulation read/updated from a note pattern data stream.
-struct ArticulationData {
-  uint8_t note_code;
-  uint16_t hold_duration;
-  uint16_t total_duration;
-  uint8_t velocity;
-};
-
-// Parse the note articulation pattern event, advancing the passed in event 
-// stream to the next event and populating the note data to reflect the 
-// values in the articulation event.
-Status ReadArticulationEvent(ZSequence::Stream* stream,
-    ArticulationData* art_data) {
-
-  const uint8_t event_code = GetUByteAndInc(stream);
-
-  // Get the note code from the low 5 bits: 0 - 31
-  art_data->note_code = event_code & 0x1f;
-  // Get the articulation type from the high 3 bits: 0 - 7, though there are
-  // only 6 modes.
-  const uint8_t art_type = (event_code & 0xe0) >> 5;
-
-  if (art_type > 5) {
-    return util::FormatMismatchError(
-        StrCat("Articulation type out of range: (", art_type, " > 5)"));
-  }
-  switch (art_type) {
-  // Mode 0: All articulation parameters change
-  case 0:
-    art_data->velocity = GetUByteAndInc(stream);
-    art_data->total_duration = util::varint::GetVarintAndInc(stream);
-    art_data->hold_duration = 
-        TakeUBytePercentageAndInc(art_data->total_duration, stream);
-    return util::OkStatus;
-  // Mode 1: Change duration and velocity, set hold to 100%
-  case 1:
-    art_data->velocity = GetUByteAndInc(stream);
-    art_data->total_duration = util::varint::GetVarintAndInc(stream);
-    art_data->hold_duration = art_data->hold_duration;
-    return util::OkStatus;
-  // Mode 2: Only velocity changes.
-  case 2:
-    art_data->velocity = GetUByteAndInc(stream);
-    return util::OkStatus;
-  // Mode 3: Change duration and hold, but leave velocity.
-  case 3:
-    art_data->total_duration = util::varint::GetVarintAndInc(stream);
-    art_data->hold_duration =
-       TakeUBytePercentageAndInc(art_data->total_duration, stream);
-    return util::OkStatus;
-  // Mode 4: Change duration, set hold to 100%, leave velocity
-  case 4:
-    art_data->total_duration = util::varint::GetVarintAndInc(stream);
-    art_data->hold_duration = art_data->hold_duration;
-    return util::OkStatus;
-  // Mode 5: Nothing changes
-  case 5:
-    return util::OkStatus;
-  default:
-    ASSERT(false);
-  }
-}
 // Given a stream pointing to a varint, returns the address of the stream
 // pointer plus the value of the varint and advances the stream to the next
 // value.
@@ -106,6 +39,7 @@ const uint8_t* GetVarintAsOffsetAndInc(ZSequence::Stream* stream) {
 constexpr uint8_t kRepeatUninitialized = 255;
 // We wrap this enum in a namespace to avoid poluting the translation unit
 // namespace.
+
 namespace PlaylistEvents {
 enum PlaylistEventsE : uint8_t {
   kJump = 0xb1,
@@ -114,6 +48,19 @@ enum PlaylistEventsE : uint8_t {
   kStop = 0xff
 };
 } // namespace PlaylistEvents
+
+namespace PatternEvents {
+enum PatternEventsE : uint8_t {
+  kDelay = 0xf0,
+  kReturn = 0xff
+};
+} // namespace PatternEvents
+
+namespace NotePatternEvents {
+enum NotePatternEventsE : uint8_t {
+  kSetNoteRange = 0xe1
+};
+} // namespace NotePatternEvents
 
 } // namespace
 
@@ -126,15 +73,18 @@ enum PlaylistEventsE : uint8_t {
 // table.
 //
 // Increases the parent playlist reference counter.
-ZSequence::Playlist::Playlist(ZSequence* parent, Stream playlist) : 
+ZSequence::Playlist::Playlist(ZSequence* parent, Stream playlist, 
+    Callbacks callbacks) : 
     in_pattern_(false),
     coda_(false),
     repeat_counter_(kRepeatUninitialized),
     return_to_(0),
     playlist_base_(playlist),
+    shared_callbacks_(callbacks),
     cursor_(GetVarintAsOffsetAndInc(&playlist)),
     pattern_start_table_(playlist),
-    parent_(parent) {
+    parent_(parent),
+    completed_(false) {
   ++(parent_->playlist_refs_);
 }
 
@@ -148,14 +98,40 @@ ZSequence::Stream ZSequence::Playlist::GetPatternData(int pattern) {
 }
 
 StatusOr<bool> ZSequence::Playlist::AdvanceAnyPatternEvent() {
-  
+  bool completed = true;
+  do {
+    // We read the event like this instead of with a GetUByteAndInc because we
+    // will not want to advance the cursor if we intend to call
+    // AdvancePatternEvent
+    const uint8_t event_code = *cursor_;
+    
+    switch (event_code) {
+      case PatternEvents::kDelay: {
+        ++cursor_;
+        const uint16_t delay_ticks = util::varint::GetVarintAndInc(&cursor_);
+        shared_callbacks_.rest_callback(delay_ticks);
+        return false;
+      }
+      case PatternEvents::kReturn:
+        // Pattern reading has completed
+        return true;
+    }
+    ASSIGN_OR_RETURN(completed, AdvancePatternEvent());
+  } while (!completed);
+
+  // We must still be reading this pattern
+  return false;
 }
 
 StatusOr<bool> ZSequence::Playlist::Advance() {
+  if (completed_) {
+    return util::FailedPreconditionError(StrCat("Cannot advance a playlist "
+        "that has reached its end."));
+  }
   for(;;) {
     if (in_pattern_) {
       ASSIGN_OR_RETURN(bool pattern_complete, AdvanceAnyPatternEvent());
-      if (!pattern_complete) return true; 
+      if (!pattern_complete) return false; 
       // Return the cursor to the next playlist event
       ASSERT_NE(return_to_, 0);
       cursor_ = return_to_;
@@ -208,6 +184,10 @@ StatusOr<bool> ZSequence::Playlist::Advance() {
         }
         break;
       }
+      case PlaylistEvents::kStop: {
+        completed_ = true;
+        return true;
+      }
       default: 
         return util::FormatMismatchError(StrCat("Unrecognized playlist event. "
             "(", playlist_event, ")"));
@@ -220,12 +200,80 @@ StatusOr<bool> ZSequence::Playlist::Advance() {
 // ***************************************************************************
 
 ZSequence::NoteEventPlaylist::NoteEventPlaylist(ZSequence* parent,
-    Stream playlist, Callbacks callbacks) : Playlist(parent, playlist),
+    Stream playlist, Callbacks callbacks) : Playlist(parent, playlist, 
+        *reinterpret_cast<Playlist::Callbacks*>(&callbacks)),
     callbacks_(callbacks), note_range_(0), velocity_(kVolume100P),
     hold_duration_(0), total_duration_(0) {}
 
-StatusOr<bool> ZSequence::NoteEventPlaylist::AdvancePattern() {
-  
+StatusOr<bool> ZSequence::NoteEventPlaylist::AdvancePatternEvent() {
+  const uint8_t event_code = GetUByteAndInc(&cursor_);
+
+  if (event_code == NotePatternEvents::kSetNoteRange) {
+    // First we get the signed byte, cast it to a singed word, then multiply it
+    // by 32
+    note_range_ = 
+        static_cast<int16_t>(static_cast<int8_t>(GetUByteAndInc(&cursor_))) 
+        << 5;
+
+    // We haven't reached an event, so we aren't finished reading yet.
+    return false;
+  }
+
+  // Get the note code from the low 5 bits: 0 - 31
+  int16_t note_code = event_code & 0x1f;
+  // Get the articulation type from the high 3 bits: 0 - 7, though there are
+  // only 6 modes.
+  const uint8_t artc_type = (event_code & 0xe0) >> 5;
+
+  if (artc_type > 5) {
+    return util::FormatMismatchError(
+      StrCat("Articulation type out of range: (", artc_type, " > 5)"));
+  }
+  switch (artc_type) {
+    // Mode 0: All articulation parameters change
+  case 0:
+    velocity_ = static_cast<double>(GetUByteAndInc(&cursor_)) / 255.0;
+    total_duration_ = util::varint::GetVarintAndInc(&cursor_);
+    hold_duration_ = TakeUBytePercentageAndInc(total_duration_, &cursor_);
+    break;
+    // Mode 1: Change duration and velocity, set hold to 100%
+  case 1:
+    velocity_ = static_cast<double>(GetUByteAndInc(&cursor_)) / 255.0;
+    total_duration_ = util::varint::GetVarintAndInc(&cursor_);
+    hold_duration_ = total_duration_;
+    break;
+    // Mode 2: Only velocity changes.
+  case 2:
+    velocity_ = static_cast<double>(GetUByteAndInc(&cursor_)) / 255.0;
+    break;
+    // Mode 3: Change duration and hold, but leave velocity.
+  case 3:
+    total_duration_ = util::varint::GetVarintAndInc(&cursor_);
+    hold_duration_ = TakeUBytePercentageAndInc(total_duration_, &cursor_);
+    break;
+    // Mode 4: Change duration, set hold to 100%, leave velocity
+  case 4:
+    total_duration_ = util::varint::GetVarintAndInc(&cursor_);
+    hold_duration_ = total_duration_;
+    break;
+    // Mode 5: Nothing changes
+  case 5:
+    break;
+  default:
+    ASSERT(false);
+  }
+
+  callbacks_.articulate_callback(note_range_ + note_code, velocity_, 
+      hold_duration_, total_duration_);
+
+  // We've reached an actual event, so we're done reading.
+  return true;
 }
+
+// ***************************************************************************
+// *                         ParameterEventPlaylist                          *
+// ***************************************************************************
+
+
 
 } // namespace audio
