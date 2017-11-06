@@ -57,7 +57,7 @@ void Status::MaybeDereference(Payload* handle_) {
 }
 void Status::MaybeReference(Payload* handle_) {
   if (handle_ == nullptr) return;
-  handle_->refs++;
+  ++(handle_->refs);
 }
 bool Status::SlowComparePayloadsForEquality(Payload* lhs, Payload* rhs) {
   if ((lhs == nullptr) || (rhs == nullptr)) return false;

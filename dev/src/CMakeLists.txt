@@ -6,15 +6,17 @@ set(SRC_FILES
 	
 	main.cpp 
 	audio_format.cpp
+	bit_utils.cpp
 	brr.cpp
 	cannonical_errors.cpp
 	audiosystem.cpp
-	monosampledata16.cpp
+	sampledatam16.cpp
 	status.cpp
 	brr_file.cpp
 	sdl_audio_utils.cpp
 	make_cleanup.cpp
-	stereosampler16.cpp
+	samplers16.cpp
+	zsequence.cpp
 		
 	PARENT_SCOPE)
 

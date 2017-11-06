@@ -5,6 +5,7 @@ project(PCDataGen)
 set(HDR_FILES 
 	
 	abort.h
+	audio_defaults.h
 	assert.h
 	audio_format.h
 	audiosystem.h
@@ -15,7 +16,7 @@ set(HDR_FILES
 	cannonical_errors.h
 	make_cleanup.h
 	fixed_point.h
-	monosampledata16.h
+	sampledatam16.h
 	platform.h
 	pstruct.h
 	reflect.h
@@ -24,10 +25,10 @@ set(HDR_FILES
 	status.h
 	status_macros.h
 	statusor.h
-	stereosampler16.h
+	samplers16.h
 	strcat.h
 	tostring.h
-	stereosequencer16.h
+	zsequence.h
 	
 	PARENT_SCOPE)
 

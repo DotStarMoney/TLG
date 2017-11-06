@@ -16,7 +16,6 @@
 //
 // NOTE: This class does next-to-no sanity checking on incoming parameters!!
 //
-
 namespace audio {
 
 class SampleDataM16 {

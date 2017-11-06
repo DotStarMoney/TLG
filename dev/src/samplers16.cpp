@@ -5,6 +5,7 @@
 #include <string>
 
 #include "assert.h"
+#include "audio_defaults.h"
 #include "status.h"
 
 using ::util::StrCat;
@@ -55,13 +56,13 @@ SamplerS16::SamplerS16(AudioSystem* const parent) :
     SampleSupplier({INT16, STEREO, parent->sample_rate()}), 
     state_(kStopped),               // we aren't playing anything...
     status_(util::OkStatus),        // no issues yet...
-    pan_(0.0),                      // pan to the middle
+    pan_(kPanMiddle),               // pan to the middle
     pitch_shift_(0.0),              // pitch shift to 0 semitones
-    volume_(0.5),                   // no volume change
+    volume_(kVolume100P),           // no volume change
     vibrato_range_(0.0),            // vibrato range to 0 semitones
     playback_pitch_shift_(0.0),     // this will be set whenever Play is
                                     //   called; any default will do
-    playback_volume_(0.5),          // no volume change.
+    playback_volume_(kVolume100P),  // no volume change.
     playback_position_(0.0),        // set the playback cursor to 0
     playback_elapsed_samples_(0),   // no elapsed samples have gone by, so
                                     //   elapsed samples is 0
