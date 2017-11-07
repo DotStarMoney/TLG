@@ -34,7 +34,7 @@ namespace varint {
 // Given a stream pointing to a varint, return the value of the varint while
 // advancing the stream pointer to the next value.
 uint16_t GetVarintAndInc(const uint8_t** stream);
-} // namespace varintu16
+} // namespace varint
 } // namespace util
 
 #endif // UTIL_BIT_UTILS_H_

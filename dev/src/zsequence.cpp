@@ -20,6 +20,13 @@ uint8_t GetUByteAndInc(ZSequence::Stream* stream) {
   return *(++(*stream));
 }
 
+// Return a word from, and advance to the next value, a stream.
+uint16_t GetUWordAndInc(ZSequence::Stream* stream) {
+  const uint16_t value = *reinterpret_cast<const uint16_t*>(*stream);
+  *stream += 2;
+  return value;
+}
+
 // Takes the current stream byte, and takes its division by 255 as a percentage
 // of the passed in value. Returns this, and advances the stream.
 uint16_t TakeUBytePercentageAndInc(uint16_t value, ZSequence::Stream* stream) {
@@ -37,9 +44,9 @@ const uint8_t* GetVarintAsOffsetAndInc(ZSequence::Stream* stream) {
 
 // Marks Playlist::repeat_ as uninitialized, or, "not currently repeating"
 constexpr uint8_t kRepeatUninitialized = 255;
-// We wrap this enum in a namespace to avoid poluting the translation unit
-// namespace.
 
+// We wrap these enums in namespaces to avoid poluting the translation unit
+// namespace.
 namespace PlaylistEvents {
 enum PlaylistEventsE : uint8_t {
   kJump = 0xb1,
@@ -61,6 +68,26 @@ enum NotePatternEventsE : uint8_t {
   kSetNoteRange = 0xe1
 };
 } // namespace NotePatternEvents
+
+namespace ParameterPatternEvents {
+enum ParameterPatternEventsE : uint8_t {
+  kSetVolume = 0x41,
+  kSetPan = 0x42,
+  kSetPitch = 0x45,
+  kAddPitch = 0x46,
+  kSetVibratoRange = 0x54,
+  kSetInstrument = 0x69
+};
+} // namespace ParameterPatternEvents
+
+namespace MasterPatternEvents {
+enum MasterPatternEventsE : uint8_t {
+  kSetMasterVolume = 0x41,
+  kSetMasterPan = 0x42,
+  kSetMasterPitchShift = 0x45,
+  kSetTempo = 0x21
+};
+} // namespace MasterPatternEvents
 
 } // namespace
 
@@ -191,8 +218,8 @@ StatusOr<bool> ZSequence::Playlist::Advance() {
       default: 
         return util::FormatMismatchError(StrCat("Unrecognized playlist event. "
             "(", playlist_event, ")"));
-    }
-  }
+    } // switch
+  } // for
 }
 
 // ***************************************************************************
@@ -274,6 +301,119 @@ StatusOr<bool> ZSequence::NoteEventPlaylist::AdvancePatternEvent() {
 // *                         ParameterEventPlaylist                          *
 // ***************************************************************************
 
+ZSequence::ParameterEventPlaylist::ParameterEventPlaylist(ZSequence* parent,
+    Stream playlist, Callbacks callbacks) : Playlist(parent, playlist,
+    *reinterpret_cast<Playlist::Callbacks*>(&callbacks)),
+    callbacks_(callbacks), pitch_shift_64th_(0) {}
 
+StatusOr<bool> ZSequence::ParameterEventPlaylist::AdvancePatternEvent() {
+  uint8_t event_code = GetUByteAndInc(&cursor_);
+
+  // The HO bit indicates that theres also a duration to be read.
+  bool read_duration = !(event_code & 0x80);
+  // Erase the HO bit to halve the number of codes to check
+  event_code &= 0x7f;
+
+  uint16_t duration = 0;
+  switch (event_code) {
+    case ParameterPatternEvents::kSetVolume: {
+      const uint8_t volume = GetUByteAndInc(&cursor_);
+      if (read_duration) duration = util::varint::GetVarintAndInc(&cursor_);
+      callbacks_.set_volume_callback(static_cast<double>(volume) / 255.0, 
+          duration);
+      return true;
+    }
+    case ParameterPatternEvents::kSetPan: {
+      const int8_t pan = GetUByteAndInc(&cursor_);
+      if (read_duration) duration = util::varint::GetVarintAndInc(&cursor_);
+      callbacks_.set_pan_callback(static_cast<double>(pan) / 128.0,
+          duration);
+      return true;
+    }
+    case ParameterPatternEvents::kSetPitch: {
+      const int16_t pitch_shift = GetUWordAndInc(&cursor_);
+      if (read_duration) duration = util::varint::GetVarintAndInc(&cursor_);
+      pitch_shift_64th_ = pitch_shift;
+      callbacks_.set_pitch_shift_callback(
+          static_cast<double>(pitch_shift_64th_) / 64.0, duration);
+      return true;
+    }
+    case ParameterPatternEvents::kAddPitch: {
+      const int8_t pitch_shift_offset = GetUByteAndInc(&cursor_);
+      if (read_duration) duration = util::varint::GetVarintAndInc(&cursor_);
+      pitch_shift_64th_ += pitch_shift_offset;
+      callbacks_.set_pitch_shift_callback(
+          static_cast<double>(pitch_shift_64th_) / 64.0, duration);
+      return true;
+    }
+    case ParameterPatternEvents::kSetVibratoRange: {
+      const uint8_t vibrato_range = GetUByteAndInc(&cursor_);
+      if (read_duration) duration = util::varint::GetVarintAndInc(&cursor_);
+      callbacks_.set_vibrato_range_callback(
+          static_cast<double>(vibrato_range) / 16.0, duration);
+      return true;
+    }
+    case ParameterPatternEvents::kSetInstrument: {
+      const uint8_t instrument = GetUByteAndInc(&cursor_);
+      if (read_duration) duration = util::varint::GetVarintAndInc(&cursor_);
+      callbacks_.set_instrument_callback(instrument, duration);
+      return true;
+    }
+    default:
+      return util::FormatMismatchError(StrCat("Unrecognized pattern parameter "
+          "event. (", event_code, ")"));
+  } // switch
+}
+
+// ***************************************************************************
+// *                           MasterEventPlaylist                           *
+// ***************************************************************************
+
+ZSequence::MasterEventPlaylist::MasterEventPlaylist(ZSequence* parent, 
+    Stream playlist, Callbacks callbacks) : Playlist(parent, playlist,
+    *reinterpret_cast<Playlist::Callbacks*>(&callbacks)),
+    callbacks_(callbacks) {}
+
+StatusOr<bool> ZSequence::MasterEventPlaylist::AdvancePatternEvent() {
+  uint8_t event_code = GetUByteAndInc(&cursor_);
+  
+  // See docs for ParameterEventPlaylist.
+  bool read_duration = !(event_code & 0x80);
+  event_code &= 0x7f;
+
+  uint16_t duration = 0;
+  switch (event_code) {
+  case MasterPatternEvents::kSetMasterVolume: {
+    const uint8_t volume = GetUByteAndInc(&cursor_);
+    if (read_duration) duration = util::varint::GetVarintAndInc(&cursor_);
+    callbacks_.set_master_volume_callback(static_cast<double>(volume) / 255.0,
+        duration);
+    return true;
+  }
+  case MasterPatternEvents::kSetMasterPan: {
+    const int8_t pan = GetUByteAndInc(&cursor_);
+    if (read_duration) duration = util::varint::GetVarintAndInc(&cursor_);
+    callbacks_.set_master_pan_callback(static_cast<double>(pan) / 128.0,
+        duration);
+    return true;
+  }
+  case MasterPatternEvents::kSetMasterPitchShift: {
+    const int16_t pitch_shift = GetUWordAndInc(&cursor_);
+    if (read_duration) duration = util::varint::GetVarintAndInc(&cursor_);
+    callbacks_.set_master_pitch_shift_callback(
+        static_cast<double>(pitch_shift) / 64.0, duration);
+    return true;
+  }
+  case MasterPatternEvents::kSetTempo: {
+    const uint8_t tempo = GetUByteAndInc(&cursor_);
+    if (read_duration) duration = util::varint::GetVarintAndInc(&cursor_);
+    callbacks_.set_tempo_callback(tempo, duration);
+    return true;
+  }
+  default:
+    return util::FormatMismatchError(StrCat("Unrecognized master parameter "
+        "event. (", event_code, ")"));
+  } // switch
+}
 
 } // namespace audio

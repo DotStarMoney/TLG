@@ -14,6 +14,7 @@ namespace audio {
 // auto playlist = seq.CreateNoteEventPlaylist(3, /* callbacks */ );
 // playlist.Advance();
 
+// TODO(?): Parse non-playlist stuff, provide access to all of it
 // TODO(?): DOC ME, wtf are ticks?!
 // TODO(?): Add reference counting to sampledatam16
 
@@ -153,18 +154,38 @@ class ZSequence {
           set_instrument_callback;
     };
    private:
-     ParameterEventPlaylist(ZSequence* parent, Stream playlist,
+    ParameterEventPlaylist(ZSequence* parent, Stream playlist,
         Callbacks callbacks);
-     util::StatusOr<bool> AdvancePatternEvent() override;
+    util::StatusOr<bool> AdvancePatternEvent() override;
      
-     Callbacks callbacks_;
-     // The current pitch shift. This is tracked because pitch adjust event
-     // codes must know a current "value" of the pitch shift should they 
-     // adjust it.
-     int16_t pitch_shift_;
+    Callbacks callbacks_;
+    // The current pitch shift (in 64ths of a semitone). This is tracked 
+    // because pitch adjust event codes must know a current "value" of the 
+    // pitch shift should they adjust it.
+    int16_t pitch_shift_64th_;
   };
 
+  // A parameter event playlist for triggering callbacks pertaining to master
+  // parameter events. This class is the interface to master parameter data.
+  class MasterEventPlaylist : public Playlist {
+   public:
+    struct Callbacks : public Playlist::Callbacks {
+      std::function<void(double velocity, uint16_t total_duration)>
+          set_master_volume_callback;
+      std::function<void(double pan, uint16_t total_duration)>
+          set_master_pan_callback;
+      std::function<void(double pitch_shift, uint16_t total_duration)>
+          set_master_pitch_shift_callback;
+      std::function<void(uint8_t tempo, uint16_t total_duration)>
+          set_tempo_callback;
+    };
+   private:
+    MasterEventPlaylist(ZSequence* parent, Stream playlist, 
+        Callbacks callbacks);
+    util::StatusOr<bool> AdvancePatternEvent() override;
 
+    Callbacks callbacks_;
+  };
 
 
   // Get a note event playlist for this channel.
