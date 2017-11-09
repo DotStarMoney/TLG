@@ -14,8 +14,6 @@
 // Another example where we use floats when doubles would be preferred only
 // because low-precision might color the output sound in an interesting way.
 //
-// NOTE: This class does next-to-no sanity checking on incoming parameters!!
-//
 namespace audio {
 
 class SampleDataM16 {

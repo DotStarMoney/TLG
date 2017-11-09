@@ -3,8 +3,8 @@
 
 namespace audio {
 
-constexpr double kVolume100P = 0.5;
-constexpr double kPanMiddle = 0.0;
+constexpr float kVolume100P = 0.5;
+constexpr float kPanMiddle = 0.0;
 
 } // namespace audio
 

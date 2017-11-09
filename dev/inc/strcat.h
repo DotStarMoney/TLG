@@ -33,7 +33,7 @@ void StrCat_recursive(std::string* base, T first, ARGS... args) {
 
 template <class T0>
 std::string StrCat(T0 p0) {
-  return util::ToString(s0);
+  return util::ToString(p0);
 }
 template <class T0, class T1>
 std::string StrCat(T0 p0, T1 p1) {

@@ -45,6 +45,11 @@ const uint8_t* GetVarintAsOffsetAndInc(ZSequence::Stream* stream) {
 // Marks Playlist::repeat_ as uninitialized, or, "not currently repeating"
 constexpr uint8_t kRepeatUninitialized = 255;
 
+// The limit on the number of non-callback-triggering events playlist's will
+// read in one call to Advance. Loosely followed: at worst one extra event is
+// observed past this limit.
+constexpr int kMaxAdvanceEvents = 4;
+
 // We wrap these enums in namespaces to avoid poluting the translation unit
 // namespace.
 namespace PlaylistEvents {
@@ -91,6 +96,84 @@ enum MasterPatternEventsE : uint8_t {
 
 } // namespace
 
+ZSequence::ZSequence(uint8_t bank, int channels, uint16_t channel_priority, 
+    uint16_t channel_routing, uint8_t start_tempo, Stream master_playlist,
+    const uint16_t* channel_playlist_table) : 
+    playlist_refs_(0), 
+    bank_(bank),
+    channels_(channels), 
+    channel_priority_(channel_priority), 
+    channel_routing_(channel_routing),
+    start_tempo_(start_tempo), 
+    master_playlist_(master_playlist),
+    channel_playlist_table_(channel_playlist_table) {}
+
+StatusOr<std::unique_ptr<ZSequence>> ZSequence::Create(
+    std::unique_ptr<const uint8_t> zseq) {
+  const uint8_t* cursor = zseq.get();
+
+  if (GetUByteAndInc(&cursor) != 0x5a) {
+    return util::FormatMismatchError("Wrong ID byte.");
+  }
+
+  const uint8_t bank = GetUByteAndInc(&cursor);
+  const uint8_t tempo = GetUByteAndInc(&cursor);
+  const int channels = GetUByteAndInc(&cursor);
+  if ((channels < 1) || (channels > 8)) {
+    return util::FormatMismatchError(StrCat("Channel out of range [1, 8]:", 
+        channels));
+  }
+  const uint16_t channel_priority = GetUWordAndInc(&cursor);
+  const uint16_t channel_routing = GetUWordAndInc(&cursor);
+  const Stream master_playlist = util::varint::GetVarintAndInc(&cursor) + 
+      zseq.get();
+  const uint16_t* channel_playlist_table =
+      reinterpret_cast<const uint16_t*>(cursor);
+
+  auto seq = new ZSequence(bank, channels, channel_priority, channel_routing, 
+      tempo, master_playlist, channel_playlist_table);
+  seq->sequence_ = std::move(zseq);
+ 
+  return std::unique_ptr<ZSequence>(seq);
+}
+
+ZSequence::Stream ZSequence::GetChannelDataStart(int channel) const {
+  return sequence_.get() + *(channel_playlist_table_ + channel);
+}
+
+uint8_t ZSequence::start_instrument(int channel) const {
+  // The first byte in a block of channel data is the instrument number
+  return *GetChannelDataStart(channel);
+}
+
+std::unique_ptr<ZSequence::NoteEventPlaylist>
+    ZSequence::CreateNoteEventPlaylist(int channel,
+        NoteEventPlaylist::Callbacks callbacks) {
+  const Stream channel_data = GetChannelDataStart(channel);
+  const Stream note_data = channel_data + 
+      *reinterpret_cast<const uint16_t*>(channel_data + 1);
+
+  // We do this instead of make_unique here and below for to member access
+  // reasons
+  auto playlist = new NoteEventPlaylist(this, note_data, callbacks);
+  return std::unique_ptr<NoteEventPlaylist>(playlist);
+}
+std::unique_ptr<ZSequence::ParameterEventPlaylist>
+    ZSequence::CreateParameterEventPlaylist(
+        int channel, ParameterEventPlaylist::Callbacks callbacks) {
+  const Stream parameter_data = GetChannelDataStart(channel) + 3;
+
+  auto playlist = new ParameterEventPlaylist(this, parameter_data, callbacks);
+  return std::unique_ptr<ParameterEventPlaylist>(playlist);
+}
+std::unique_ptr<ZSequence::MasterEventPlaylist>
+    ZSequence::CreateMasterEventPlaylist(
+        MasterEventPlaylist::Callbacks callbacks) {
+
+  auto playlist = new MasterEventPlaylist(this, master_playlist_, callbacks);
+  return std::unique_ptr<MasterEventPlaylist>(playlist);
+}
+
 // ***************************************************************************
 // *                                Playlist                                 *
 // ***************************************************************************
@@ -124,14 +207,15 @@ ZSequence::Stream ZSequence::Playlist::GetPatternData(int pattern) {
   return playlist_base_ + offset;
 }
 
-StatusOr<bool> ZSequence::Playlist::AdvanceAnyPatternEvent() {
+StatusOr<bool> ZSequence::Playlist::AdvanceAnyPatternEvent(
+    int* read_code_count) {
   bool completed = true;
   do {
     // We read the event like this instead of with a GetUByteAndInc because we
     // will not want to advance the cursor if we intend to call
     // AdvancePatternEvent
     const uint8_t event_code = *cursor_;
-    
+    ++(*read_code_count);
     switch (event_code) {
       case PatternEvents::kDelay: {
         ++cursor_;
@@ -144,7 +228,9 @@ StatusOr<bool> ZSequence::Playlist::AdvanceAnyPatternEvent() {
         return true;
     }
     ASSIGN_OR_RETURN(completed, AdvancePatternEvent());
-  } while (!completed);
+    // Ensure we don't read too many events in the case where the ZSEQ has a
+    // stupid format.
+  } while (!completed || (*read_code_count < kMaxAdvanceEvents));
 
   // We must still be reading this pattern
   return false;
@@ -152,13 +238,16 @@ StatusOr<bool> ZSequence::Playlist::AdvanceAnyPatternEvent() {
 
 StatusOr<bool> ZSequence::Playlist::Advance() {
   if (completed_) {
-    return util::FailedPreconditionError(StrCat("Cannot advance a playlist "
-        "that has reached its end."));
+    return util::FailedPreconditionError("Cannot advance a playlist that has "
+        "reached its end.");
   }
-  for(;;) {
+  for(int read_code_count = 0; read_code_count < kMaxAdvanceEvents; 
+      ++read_code_count) {
     if (in_pattern_) {
-      ASSIGN_OR_RETURN(bool pattern_complete, AdvanceAnyPatternEvent());
+      ASSIGN_OR_RETURN(bool pattern_complete, 
+          AdvanceAnyPatternEvent(&read_code_count));
       if (!pattern_complete) return false; 
+
       // Return the cursor to the next playlist event
       ASSERT_NE(return_to_, 0);
       cursor_ = return_to_;
@@ -220,6 +309,8 @@ StatusOr<bool> ZSequence::Playlist::Advance() {
             "(", playlist_event, ")"));
     } // switch
   } // for
+  return util::FormatMismatchError("Too many non-event sequence codes in "
+      "a row.");
 }
 
 // ***************************************************************************
