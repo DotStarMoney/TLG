@@ -6,7 +6,7 @@
 namespace audio {
 namespace {
 
-constexpr float kOscillatorRateHz = 8.0;
+constexpr double kOscillatorRateHz = 8.0;
 
 } // namespace
 
@@ -14,12 +14,12 @@ AudioSystem::AudioSystem(SampleRate sample_rate) : sample_rate_(sample_rate) {
   set_oscillator_rate(kOscillatorRateHz);
 }
 
-void AudioSystem::set_oscillator_rate(float rate) {
+void AudioSystem::set_oscillator_rate(double rate) {
   oscillator_rate_ = rate / sample_rate_;
 }
 
 float AudioSystem::GetOscillatorValue(uint32_t elapsed_samples) {
-  return static_cast<float>(
+  return static_cast<double>(
       sin(elapsed_samples * oscillator_rate_ * M_PI * 2));
 }
 

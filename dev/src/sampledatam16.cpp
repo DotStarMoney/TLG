@@ -2,26 +2,30 @@
 
 #include <math.h>
 
+#include "brr_file.h"
+#include "status_macros.h"
+
+using ::util::StatusOr;
+
 namespace audio {
 
-SampleDataM16::ADSRSamples SampleDataM16::EnvSecondsToSamples(
-    const ADSRSeconds& envelope, int sampling_rate) {
-  return {
-      envelope.attack * sampling_rate,
-      envelope.decay * sampling_rate,
-      envelope.sustain,
-      envelope.release * sampling_rate };
-}
-
-SampleDataM16::LoopBoundsQPyramid SampleDataM16::BuildLoopBoundsPyramid(
-    const LoopBounds& loop_bounds) {
-  LoopBoundsQPyramid pyramid = {loop_bounds};
-  pyramid.resize(kQuadFreqPyramidLevels);
-  for (int level = 1; level < kQuadFreqPyramidLevels; ++level) {
-    pyramid[level].begin = pyramid[level - 1].begin * 0.25;
-    pyramid[level].length = pyramid[level - 1].length * 0.25;
+StatusOr<std::unique_ptr<const Resource>> 
+    SampleDataM16::Deserialize(std::istream* stream) {
+  //
+  // For now, only BRR files are supported
+  //
+  ASSIGN_OR_RETURN(auto sample, DeserializeBRR(stream));
+  if (!sample.opt_for_resynth) {
+    std::vector<SampleData> pyramid = {std::move(sample.sample_data)};
+    return std::unique_ptr<SampleDataM16>(
+        new SampleDataM16(std::move(pyramid), sample.sampling_rate));
   }
-  return pyramid;
+  else {
+    return std::unique_ptr<SampleDataM16>(
+        new SampleDataM16(
+            BuildSampleDataPyramid(std::move(sample.sample_data)),
+        sample.sampling_rate));
+  }
 }
 
 SampleDataM16::SampleData SampleDataM16::QuadFreqSampleData(
@@ -57,6 +61,20 @@ SampleDataM16::SampleData SampleDataM16::QuadFreqSampleData(
   new_data[new_index] = static_cast<int16_t>(std::round(static_cast<double>(
       acc) * 0.25));
   return new_data;
+}
+
+int64_t SampleDataM16::GetUsageBytes() const {
+  return total_bytes_;
+}
+
+int64_t SampleDataM16::GetTotalSize() const {
+  int64_t total_bytes = 0;
+  for (const auto& level : data_pyramid_) {
+    total_bytes += level.capacity() * sizeof(int16_t);
+    total_bytes += sizeof(SampleData);
+  }
+  total_bytes += sizeof(SampleDataM16);
+  return total_bytes;
 }
 
 } // namespace audio

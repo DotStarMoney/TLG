@@ -5,6 +5,7 @@
 #include <string_view>
 #include <vector>
 
+#include "audio_format.h"
 #include "sampledatam16.h"
 #include "status.h"
 #include "statusor.h"
@@ -19,37 +20,17 @@
 //
 // BYTES |       VALUE
 // ============================
+//     4 |         ASCII "TLGR"
+// ____________________________
 //     4 |         ASCII "BRR "
 // ____________________________
 //     2 |        sampling rate
 // ____________________________
+//     1 | 1 if should optimize
+//       |   for resynthesis, 0
+//       |            otherwise
+// ____________________________
 //     4 |         # of samples
-// ____________________________
-//     4 |  # bytes in BRR Data
-// ____________________________
-//     1 |   mode: bit 1 is set 
-//       | if looping, bit 2 is
-//       |      set if envelope
-// ____________________________
-//    *4 |   if loop: inclusive 
-//       | sample index of loop
-//       |                start
-// ____________________________
-//    *4 |   if loop: inclusive 
-//       | sample index of loop
-//       |                  end
-// ____________________________
-//    *2 |  if envelope: attack 
-//       |                in ms
-// ____________________________
-//    *2 |   if envelope: decay 
-//       |                in ms
-// ____________________________
-//    *1 | if envelope: sustain 
-//       | as a % from 0 to 255             
-// ____________________________
-//    *2 | if envelope: release 
-//       |                in ms
 // ____________________________
 //     4 |  # bytes in BRR Data
 // ____________________________
@@ -58,21 +39,18 @@
 
 namespace audio {
 
-// Set opt_for_resynth to true if the returned sample should be optimized for
-// playback at higher frequencies.
-util::StatusOr<std::unique_ptr<SampleDataM16>> LoadBRR(
-    std::string_view filename, bool opt_for_resynth = true);
+// The return type of DeserializeBRR
+struct BRRData {
+  std::vector<int16_t> sample_data;
+  SampleRate sampling_rate;
+  bool opt_for_resynth;
+};
+// Returns the BRRData deserialized into BRRData.
+util::StatusOr<BRRData> DeserializeBRR(std::istream* stream);
 
-// loop_start and loop_end are the inclusive loop bounds in samples.
-// If no loop, pass loop_start = loop_end = 0.
-// If no envelope, pass attack = sustain = decay = release = 0
-//
-// attack, decay, and relase, are all in units of ms. sustain is a percentage
-// scaled by 255.
-util::Status SaveBRR(std::string_view filename,
-    const std::vector<int16_t>& samples, int sampling_rate, 
-    uint32_t loop_start = 0, uint32_t loop_end = 0, uint16_t attack = 0,
-    uint16_t decay = 0, uint8_t sustain = 255, uint16_t release = 0);
+// Saves the BRRData in the serialized brr format described above to the given
+// file.
+util::Status SaveBRR(std::string_view filename, const BRRData& brr_data);
 
 } // namespace audio
 

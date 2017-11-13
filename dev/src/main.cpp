@@ -10,6 +10,7 @@
 
 int PlaybackTest(audio::SamplerS16* sampler,
     const audio::SampleDataM16& sampler_data) {
+  
   if (SDL_Init(SDL_INIT_AUDIO) < 0) return 1;
 
   SDL_AudioSpec want, have;
@@ -56,9 +57,7 @@ int main(int argc, char** argv) {
   ASSERT_EQ(sdl::util::WavToBRR(
           "res/littlelead.wav",
           "res/littlelead.brr",
-          3114,
-          3955,
-          20, 100, 128, 200), 
+          true), 
       util::OkStatus);
 
   std::cout << "Reading BRR." << std::endl;
@@ -73,17 +72,7 @@ int main(int argc, char** argv) {
   sampler.Play(30);
   return PlaybackTest(&sampler, *sample.get());
 
-  // Sequencer implementation:
-  // ProvideNextSamples:
-  //    For each channel, we observe the chronological sequence of its note,
-  //    parameter, and also global events. We keep pulling up samples until we
-  //    would pull past the number of samples passed into the original
-  //    invocation of ProvideNextSamples. We leave the channel cursors where
-  //    they are so we can pull up in the next call to PNS.
-
-
-
-  // TODO(?): Create the sequence format, write a player.
+  // TODO(?): Resource manager
 
   // TODO(?): Build Clang Fix or whatever for Google style guide into workflow
   // TODO(?): Need to setup tests, need way to run tests, and to write tests

@@ -4,6 +4,7 @@
 #include "make_cleanup.h"
 #include "SDL.h"
 #include "strcat.h"
+#include "audio_format.h"
 
 using ::util::Status;
 using ::std::string_view;
@@ -12,8 +13,7 @@ namespace sdl {
 namespace util {
 
 Status WavToBRR(string_view source_file, string_view dest_file,
-    uint32_t loop_start, uint32_t loop_end, uint16_t attack, uint16_t decay,
-    uint8_t sustain, uint16_t release) {
+    bool opt_for_resynth) {
   
   uint32_t sample_data_size;
   int16_t* sample_data;
@@ -41,8 +41,9 @@ Status WavToBRR(string_view source_file, string_view dest_file,
   std::vector<int16_t> sample_data_v(sample_data, 
       sample_data + sample_data_size / 2);
 
-  return audio::SaveBRR(dest_file, sample_data_v, wav_spec.freq, loop_start,
-      loop_end, attack, decay, sustain, release);
+  return audio::SaveBRR(dest_file, 
+      {sample_data_v, static_cast<audio::SampleRate>(wav_spec.freq), 
+          opt_for_resynth});
 }
 
 } // namespace util

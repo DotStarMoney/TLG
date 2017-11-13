@@ -210,7 +210,7 @@ class ZSequence {
       // Set the channel volume and delay the next event by a number of ticks.
       //
       // Volume ranges from [0, 1], with 0.5 representing no volume change.
-      std::function<void(double velocity, uint16_t total_duration)>
+      std::function<void(double volume, uint16_t total_duration)>
           set_master_volume_callback;
       // Set the master pan and delay the next event by a number of ticks.
       //
