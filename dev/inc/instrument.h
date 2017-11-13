@@ -56,7 +56,6 @@ namespace audio {
 //
 // }
 //
-
 class Instrument : public Resource {
  public:
   static constexpr int64_t kResourceUID = 0x349F7B23AD07BADD;

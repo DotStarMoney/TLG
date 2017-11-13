@@ -8,6 +8,7 @@
 #include "fixed_point.h"
 #include "sampledatam16.h"
 #include "samplesupplier.h"
+#include "instrument_characteristics.h"
 #include "status.h"
 
 namespace audio {
@@ -30,16 +31,22 @@ class SamplerS16 : public AudioComponent, public SampleSupplier<int16_t> {
     kPlaying = 2
   };
 
-  // Call Stop and prepare a sample for playback. Playing a sample when
-  // disarmed is not an error and results in silence. Arming a nullptr will
-  // default to playing silence.
-  void Arm(const SampleDataM16* sample);
+  // Call Stop and set the sample data. Arming a nullptr wil default to playing
+  // silence.
+  void ArmSample(const SampleDataM16* sample);
+  // Call Stop and set the loop info. Arming a nullptr will default to using
+  // the InstrumentCharacteristics default loop info.
+  void ArmLoop(const InstrumentCharacteristics::LoopInfo* loop_info);
+  // Call Stop and set the envelope. Arming a nullptr will default to using the
+  // InstrumentCharacteristics default envelope.
+  void ArmEnvelope(const InstrumentCharacteristics::ADSRSeconds* envelope);
 
   // Stop playback and prepare the sampler for another playback. 
   void Stop();
 
   // If stopped or playing: start a new playback.
-  // If paused: resume playback.
+  // If paused: resume playback at the previous semitone shift and volume, 
+  // regardless of how they're set here.
   void Play(float semitone_shift = 0.0, float volume_ = 0.5);
   
   // Pause any on-going playback.
@@ -72,9 +79,9 @@ class SamplerS16 : public AudioComponent, public SampleSupplier<int16_t> {
   const util::Status& status() const { return status_; }
 
   util::Status ProvideNextSamples(
-    Iter samples_start,
-    uint32_t sample_size,
-    uint32_t sample_clock) override;
+      Iter samples_start,
+      uint32_t sample_size,
+      uint32_t sample_clock) override;
 
  private:
   State state_;
@@ -118,11 +125,39 @@ class SamplerS16 : public AudioComponent, public SampleSupplier<int16_t> {
   // True if this sample is releasing, false otherwise.
   bool releasing_;
 
-  // A reference to the sample data we play, nullptr if we don't have a sample.
+  // A pointer to the sample data we play, nullptr if we don't have a sample.
   //
   // Not owned.
   const SampleDataM16* sample_;
   
+  // A loop mode, paired with loop bounds adjusted for a frequency pyramid.
+  struct LoopInfoLevels {
+    InstrumentCharacteristics::LoopMode mode;
+    std::vector<InstrumentCharacteristics::LoopBounds> bounds_levels;
+  };
+  // A pointer to the looping information used for sample playback.
+  const LoopInfoLevels* loop_info_levels_;
+  // A pointer to the ADSR envelope used for sample playback.
+  const InstrumentCharacteristics::ADSRSamples* envelope_;
+
+  // The converted envelope, and pyramided loop info. These are set when
+  // ArmLoop or ArmEnvelope are called. We seperate these from the values used
+  // in the sampler for playback so that switching to default values is as
+  // fast as changing the pointer target to envelope_ and loop_info_levels_.
+  InstrumentCharacteristics::ADSRSamples converted_envelope_;
+  LoopInfoLevels converted_loop_info_;
+  // If converted_loop_info_ is in fewer levels than sample_, expand
+  // converted_loop_info_ so it reflects the pyramid quadrupling over the
+  // sample data that the levels of the current sample do. If the sample is a 
+  // nullptr, nothing happens.
+  void ExpandLoopInfo();
+
+  // Used as targets for the instrument characteristics when armed with a
+  // nullptr. These aren't static as at least default_envelope varies with
+  // the sampling rate.
+  const LoopInfoLevels default_loop_info;
+  const InstrumentCharacteristics::ADSRSamples default_envelope;
+
   // Get a sample by its index, returning 0 for samples outside the range of
   // the provided data.
   int16_t GetSampleByIndex(const SampleDataM16::SampleData& data,

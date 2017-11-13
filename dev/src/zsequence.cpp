@@ -5,6 +5,7 @@
 #include "bit_utils.h"
 #include "status.h"
 #include "status_macros.h"
+#include "pstruct.h"
 
 using ::util::Status;
 using ::util::StatusOr;
@@ -13,14 +14,26 @@ using ::util::StrCat;
 namespace audio {
 namespace {
 
+// ASCII "TLGR"
+constexpr uint32_t kTLGRTag = 0x52474C54;
+// ASCII "ZSEQ"
+constexpr uint32_t kZSEQTag = 0x5145535A;
+
+// The serialization header
+pstruct ZSequenceHeader{
+  uint32_t tlgr_tag;
+  uint32_t zseq_tag;
+  uint32_t zseq_bytes;
+};
+
 constexpr int kStopPatternEventCode = 0xff;
 
-// Return a byte from, and advance to the next value, a stream.
+// Return a ubyte from, and advance to the next value, a stream.
 uint8_t GetUByteAndInc(ZSequence::Stream* stream) {
   return *(++(*stream));
 }
 
-// Return a word from, and advance to the next value, a stream.
+// Return a uword from, and advance to the next value, a stream.
 uint16_t GetUWordAndInc(ZSequence::Stream* stream) {
   const uint16_t value = *reinterpret_cast<const uint16_t*>(*stream);
   *stream += 2;
@@ -93,57 +106,97 @@ enum MasterPatternEventsE : uint8_t {
   kSetTempo = 0x21
 };
 } // namespace MasterPatternEvents
-
 } // namespace
 
-ZSequence::ZSequence(uint8_t bank, int channels, uint16_t channel_priority, 
-    uint16_t channel_routing, uint8_t start_tempo, Stream master_playlist,
-    const uint16_t* channel_playlist_table) : 
-    playlist_refs_(0), 
-    bank_(bank),
-    channels_(channels), 
-    channel_priority_(channel_priority), 
-    channel_routing_(channel_routing),
-    start_tempo_(start_tempo), 
-    master_playlist_(master_playlist),
-    channel_playlist_table_(channel_playlist_table) {}
+StatusOr<std::unique_ptr<const Resource>> ZSequence::Deserialize(
+    std::istream* stream) {
+  ZSequenceHeader zseq_header;
+  stream->read(reinterpret_cast<char*>(&zseq_header), sizeof(zseq_header));
+  if (!(*stream)) return util::IOError("Reading ZSEQ stream failed.");
 
-StatusOr<std::unique_ptr<ZSequence>> ZSequence::Create(
-    std::unique_ptr<const uint8_t> zseq) {
-  const uint8_t* cursor = zseq.get();
+  if (zseq_header.tlgr_tag != kTLGRTag) {
+    return util::FormatMismatchError("ZSEQ header does not have a valid TLGR "
+      "tag.");
+  }
+  if (zseq_header.zseq_tag != kZSEQTag) {
+    return util::FormatMismatchError("ZSEQ header does not have a valid ZSEQ "
+      "tag.");
+  }
+
+  std::vector<uint8_t> zseq_data(zseq_header.zseq_bytes);
+  stream->read(reinterpret_cast<char*>(zseq_data.data()), 
+      zseq_header.zseq_bytes);
+  if (!(*stream)) return util::IOError("Reading ZSEQ file failed.");
+
+  const uint8_t* cursor = zseq_data.data();
 
   if (GetUByteAndInc(&cursor) != 0x5a) {
     return util::FormatMismatchError("Wrong ID byte.");
   }
 
-  const uint8_t bank = GetUByteAndInc(&cursor);
+  const uint8_t instruments = GetUByteAndInc(&cursor);
+  const uint64_t* instrument_table = reinterpret_cast<const uint64_t*>(cursor);
+  // Increment a qword for each instrument.
+  cursor += instruments * 8;
   const uint8_t tempo = GetUByteAndInc(&cursor);
   const int channels = GetUByteAndInc(&cursor);
   if ((channels < 1) || (channels > 8)) {
-    return util::FormatMismatchError(StrCat("Channel out of range [1, 8]:", 
+    return util::FormatMismatchError(StrCat("Channel out of range [1, 8]:",
         channels));
   }
   const uint16_t channel_priority = GetUWordAndInc(&cursor);
   const uint16_t channel_routing = GetUWordAndInc(&cursor);
-  const Stream master_playlist = util::varint::GetVarintAndInc(&cursor) + 
-      zseq.get();
+  const Stream master_playlist = util::varint::GetVarintAndInc(&cursor) +
+      zseq_data.data();
   const uint16_t* channel_playlist_table =
-      reinterpret_cast<const uint16_t*>(cursor);
+    reinterpret_cast<const uint16_t*>(cursor);
 
-  auto seq = new ZSequence(bank, channels, channel_priority, channel_routing, 
-      tempo, master_playlist, channel_playlist_table);
-  seq->sequence_ = std::move(zseq);
- 
-  return std::unique_ptr<ZSequence>(seq);
+  auto seq = new ZSequence(channels, channel_priority, channel_routing,
+      tempo, master_playlist, channel_playlist_table, instrument_table,
+      instruments);
+
+  // Though we've assigned a boatload of pointers to stuff in zseq_data prior,
+  // this is safe as we're moving zseq_data and its not const (therefore the
+  // pointers we just set are still valid)
+  seq->sequence_ = std::move(zseq_data);
+  return std::unique_ptr<const ZSequence>(seq);
+}
+
+ZSequence::ZSequence(int channels, uint16_t channel_priority, 
+    uint16_t channel_routing, uint8_t start_tempo, Stream master_playlist,
+    const uint16_t* channel_playlist_table, const uint64_t* instrument_table,
+    uint8_t instruments) : 
+    playlist_refs_(0), 
+    channels_(channels), 
+    channel_priority_(channel_priority), 
+    channel_routing_(channel_routing),
+    start_tempo_(start_tempo), 
+    master_playlist_(master_playlist),
+    channel_playlist_table_(channel_playlist_table),
+    instrument_table_(instrument_table),
+    instruments_(instruments) {}
+
+ZSequence::~ZSequence() {
+  // Ensure there are no outstanding playlist references.
+  ASSERT_EQ(playlist_refs_.load(), 0);
+}
+
+int64_t ZSequence::GetUsageBytes() const {
+  // No multiplications with sequence_.capacity() as its already in bytes.
+  return sequence_.capacity() + sizeof(ZSequence);
 }
 
 ZSequence::Stream ZSequence::GetChannelDataStart(int channel) const {
-  return sequence_.get() + *(channel_playlist_table_ + channel);
+  return sequence_.data() + *(channel_playlist_table_ + channel);
 }
 
 uint8_t ZSequence::start_instrument(int channel) const {
   // The first byte in a block of channel data is the instrument number
   return *GetChannelDataStart(channel);
+}
+
+ResourceManager::MapID ZSequence::GetInstrumentID(uint8_t index) const {
+  return instrument_table_[index];
 }
 
 std::unique_ptr<ZSequence::NoteEventPlaylist>

@@ -7,6 +7,7 @@
 #include <stdint.h>
 
 #include "statusor.h"
+#include "resourcemanager.h"
 
 namespace audio {
 
@@ -35,11 +36,33 @@ namespace audio {
 // The interpretation of parameters and combined parameters like channel pan 
 // mixing with master pan are left up to the user.
 //
-class ZSequence {
-  friend class Playlist;
- public:
-  typedef const uint8_t* Stream;
+// ZSequences can only be created by Deserializing byte streams of the
+// following format:
+//
+// (all header numbers are considered unsigned unless postfixed with an S)
+//
+// BYTES |                 VALUE
+// ==============================================
+//     4 |                           ASCII "TLGR"
+// ______________________________________________
+//     4 |                           ASCII "ZSEQ"
+// ______________________________________________
+//     4 |         size in bytes of the zseq data 
+// ______________________________________________
+//     * |                       zseq binary data 
+// ______________________________________________
+//
+class ZSequence : public Resource {
+public:
+  static constexpr int64_t kResourceUID = 0x9655CA525088BCD6;
+  static util::StatusOr<std::unique_ptr<const Resource>>
+      Deserialize(std::istream* stream);
 
+  int64_t resource_uid() const override { return kResourceUID; }
+  int64_t GetUsageBytes() const override;
+
+  friend class Playlist;
+  typedef const uint8_t* Stream;
  private:
 
   // The base class for all playlist types.
@@ -234,8 +257,8 @@ class ZSequence {
     Callbacks callbacks_;
   };
 
-  util::StatusOr<std::unique_ptr<ZSequence>> Create(
-      std::unique_ptr<const uint8_t> zseq);
+  // Only responsible for ensuring no outstanding Playlist references exist
+  ~ZSequence();
 
   // Get event playlists for a specific channel.
   std::unique_ptr<NoteEventPlaylist> CreateNoteEventPlaylist(int channel,
@@ -247,8 +270,6 @@ class ZSequence {
   std::unique_ptr<MasterEventPlaylist> CreateMasterEventPlaylist(
       MasterEventPlaylist::Callbacks callbacks);
 
-  // The instrument bank reference by the instruments channels.
-  uint8_t bank() const { return bank_; }
   // The number of channels in this sequence.
   int channels() const { return channels_; }
   // The starting instrument for a channel. We don't inline this becase getting
@@ -268,11 +289,16 @@ class ZSequence {
   uint16_t channel_routing() const { return channel_routing_; }
   // The initial tempo for this sequence in ticks/second.
   uint8_t start_tempo() const { return start_tempo_; }
+  // The number of instruments in the instrument bank.
+  uint8_t instruments() const { return instruments_; }
+  // The instrument Resource ID of the specified index.
+  ResourceManager::MapID GetInstrumentID(uint8_t index) const;
  private:  
-  // Mosty responsible for initializing const members...
-  ZSequence(uint8_t bank, int channels, uint16_t channel_priority, 
-      uint16_t channel_routing, uint8_t start_tempo, Stream master_playlist,
-      const uint16_t* channel_playlist_table);
+  // Entirely responsible for initializing const members...
+  ZSequence(int channels, uint16_t channel_priority, uint16_t channel_routing,
+      uint8_t start_tempo, Stream master_playlist,
+      const uint16_t* channel_playlist_table, const uint64_t* instrument_table,
+      uint8_t instruments);
 
   // Get a Stream to the start of an individual channel's data
   Stream GetChannelDataStart(int channel) const;
@@ -283,7 +309,6 @@ class ZSequence {
   std::atomic_uint32_t playlist_refs_;
   
   // See docs for accessors.
-  const uint8_t bank_;
   const int channels_;
   const uint16_t channel_priority_;
   const uint16_t channel_routing_;
@@ -293,9 +318,13 @@ class ZSequence {
   const Stream master_playlist_;
   // The channel playlist table bytes.
   const uint16_t* channel_playlist_table_;
+  // The instrument bank bytes.
+  const uint64_t* instrument_table_;
+  // The number of instruments.
+  const uint8_t instruments_;
 
   // The ZSEQ binary data.
-  std::unique_ptr<const uint8_t> sequence_;
+  std::vector<uint8_t> sequence_;
 };
 
 } // namespace audio

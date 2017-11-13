@@ -28,7 +28,7 @@ enum SampleRate : int {
 struct Format {
   SampleFormat sample_format;
   ChannelLayout layout;
-  int sampling_rate;
+  SampleRate sampling_rate;
   std::string ToString() const;
 };
 
