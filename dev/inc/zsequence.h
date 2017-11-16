@@ -88,10 +88,11 @@ public:
       // Delay the next event by a duration in ticks.
       std::function<void(uint16_t duration)> rest_callback;
     };
-    explicit Playlist(ZSequence* parent, Stream playlist, Callbacks callbacks);
+    explicit Playlist(const ZSequence* parent, Stream playlist,
+        Callbacks callbacks);
    private:
     // Get the Stream of a playlist pattern.
-    Stream GetPatternData(int pattern);
+    Stream GetPatternData(int pattern) const;
     // Process the next pattern event: unlike AdvancePatternEvent, this method
     // handles all event types, including those shared between all pattern
     // types (namely delay and return). Takes the number of read codes thusfar
@@ -132,7 +133,7 @@ public:
     Stream const pattern_start_table_;
     // The parent sequence, we track it here for access to the playlist
     // reference counter.
-    ZSequence* parent_;
+    const ZSequence* parent_;
 
     // Flags that this playlist is out of events to play, and attempting to
     // advance it any further will result in an error.
@@ -162,7 +163,8 @@ public:
           uint16_t total_duration)> articulate_callback;
     };
    private:
-    NoteEventPlaylist(ZSequence* parent, Stream playlist, Callbacks callbacks);
+    NoteEventPlaylist(const ZSequence* parent, Stream playlist,
+        Callbacks callbacks);
     util::StatusOr<bool> AdvancePatternEvent() override;
 
     // Callbacks for the Advance method.
@@ -213,7 +215,7 @@ public:
           set_instrument_callback;
     };
    private:
-    ParameterEventPlaylist(ZSequence* parent, Stream playlist,
+    ParameterEventPlaylist(const ZSequence* parent, Stream playlist,
         Callbacks callbacks);
     util::StatusOr<bool> AdvancePatternEvent() override;
      
@@ -250,7 +252,7 @@ public:
           set_tempo_callback;
     };
    private:
-    MasterEventPlaylist(ZSequence* parent, Stream playlist, 
+    MasterEventPlaylist(const ZSequence* parent, Stream playlist, 
         Callbacks callbacks);
     util::StatusOr<bool> AdvancePatternEvent() override;
 
@@ -262,13 +264,13 @@ public:
 
   // Get event playlists for a specific channel.
   std::unique_ptr<NoteEventPlaylist> CreateNoteEventPlaylist(int channel,
-      NoteEventPlaylist::Callbacks callbacks);
+      NoteEventPlaylist::Callbacks callbacks) const;
   std::unique_ptr<ParameterEventPlaylist> CreateParameterEventPlaylist(
-      int channel, ParameterEventPlaylist::Callbacks callbacks);
+      int channel, ParameterEventPlaylist::Callbacks callbacks) const;
 
   // Get a master event playlist.
   std::unique_ptr<MasterEventPlaylist> CreateMasterEventPlaylist(
-      MasterEventPlaylist::Callbacks callbacks);
+      MasterEventPlaylist::Callbacks callbacks) const;
 
   // The number of channels in this sequence.
   int channels() const { return channels_; }
@@ -306,7 +308,7 @@ public:
   // A reference counter the tracks the number of playlists created by this
   // ZSequence. This is used so that ZSequence can safely abort if there are
   // outstanding references to playlists when a ZSequence destructs.
-  std::atomic_uint32_t playlist_refs_;
+  mutable std::atomic_uint32_t playlist_refs_;
   
   // See docs for accessors.
   const int channels_;

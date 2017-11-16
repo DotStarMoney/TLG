@@ -46,7 +46,7 @@ class SampleDataM16 : public Resource {
   template <class DataPyramidT>
   SampleDataM16(DataPyramidT&& data_pyramid, int sample_rate) :
       data_pyramid_(std::forward<DataPyramidT>(data_pyramid)),
-      format_({INT16, MONO, sample_rate}),
+      format_({INT16, MONO, static_cast<SampleRate>(sample_rate)}),
       total_bytes_(GetTotalSize()) {
     type_assert::IsConvertibleTo<SampleDataPyramid, DataPyramidT>();
   }

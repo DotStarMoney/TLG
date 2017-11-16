@@ -10,10 +10,13 @@ set(HDR_FILES
 	assert.h
 	audio_format.h
 	audiosystem.h
+	deleterptr.h
 	bit_utils.h
 	brr.h
 	brr_file.h
 	sdl_audio_utils.h
+	instrument.h
+	instrument_characteristics.h
 	cannonical_errors.h
 	make_cleanup.h
 	fixed_point.h

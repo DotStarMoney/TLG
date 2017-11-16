@@ -72,7 +72,9 @@ StatusOr<std::unique_ptr<const Resource>>
     return util::FormatMismatchError("INST # splits must be > 0");
   }
 
-  for (int cur_split; cur_split < inst_header.splits; ++cur_split) {
+  for (unsigned int cur_split = 0;
+      cur_split < inst_header.splits;
+      ++cur_split) {
     SplitHeader split_header;
     stream->read(reinterpret_cast<char*>(&split_header), sizeof(split_header));
     if (!(*stream)) return util::IOError("Reading INST stream failed.");
@@ -155,7 +157,7 @@ Instrument::~Instrument() {
   // unique_ptr to minimize complexity: this isn't really a case of "complex"
   // memory management... (who are you trying to convince?)
   for (const auto& split : splits_) {
-    if (split.character != nullptr) delete(split.character);
+    if (split.character_ != nullptr) delete(split.character_);
   }
 }
 
@@ -163,8 +165,8 @@ const Instrument::SplitData& Instrument::GetPlayCharacteristics(
     double semitones) const {
   auto split = std::lower_bound(splits_.begin(), splits_.end(), 
       static_cast<int16_t>(semitones), 
-      [](const SplitData& a, const SplitData& b) { 
-          return a.base_offset < b.base_offset; 
+      [](const SplitData& a, const int16_t& b) { 
+          return a.base_offset_ < b; 
       });
 
   // If we request a split before the lowest ranged split we track, just return 

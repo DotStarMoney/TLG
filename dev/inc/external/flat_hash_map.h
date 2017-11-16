@@ -4,6 +4,13 @@
 #ifndef EXTERN_UTIL_FLAT_HASH_MAP_H_
 #define EXTERN_UTIL_FLAT_HASH_MAP_H_
 
+#include "platform.h"
+
+_MSVC_DISABLE_WARNING(4293);
+_MSVC_DISABLE_WARNING(4309);
+_MSVC_DISABLE_WARNING(4305);
+_MSVC_DISABLE_WARNING(4624);
+
 #include <cstdint>
 #include <cstddef>
 #include <functional>
@@ -1448,5 +1455,10 @@ using flat_hash_set = ska::flat_hash_set<T, H, E, A>;
 
 } // namespace util
 } // namespace external
+
+_MSVC_ENABLE_WARNING(4293);
+_MSVC_ENABLE_WARNING(4309);
+_MSVC_ENABLE_WARNING(4305);
+_MSVC_ENABLE_WARNING(4624);
 
 #endif // EXTERN_UTIL_FLAT_HASH_MAP_H_

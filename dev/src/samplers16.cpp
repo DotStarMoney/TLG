@@ -289,10 +289,10 @@ util::Status SamplerS16::ProvideNextSamples(
   const float pan_percent_r = (pan_ + 1.0f) * 0.5f;
   do {
     int16_t sample = 0;
-    const float final_offset = semitone_offset + 
+    const double final_offset = semitone_offset + 
         parent_->GetOscillatorValue(sample_clock) * vibrato_range_;
 
-    sample = IterateNextSample(final_offset);
+    sample = IterateNextSample(static_cast<float>(final_offset));
     
     sample = static_cast<int16_t>(std::round(std::clamp(
         static_cast<double>(sample) * volume_multiplier, -32768.0, 32767.0)));
@@ -317,7 +317,7 @@ void SamplerS16::ExpandLoopInfo() {
   // how the loop bounds change with the similarly quartered sample data when
   // the sample data is in a pyramid.
   converted_loop_info_.bounds_levels.resize(sample_->pyramid_levels());
-  for (int level = 1;
+  for (unsigned int level = 1;
       level < converted_loop_info_.bounds_levels.size();
       ++level) {
     converted_loop_info_.bounds_levels[level].begin = 

@@ -14,7 +14,7 @@ namespace util {
 template <class T>
 class StatusOr final {
   static_assert(!std::is_same<T, Status>::value, "Cannot construct a StatusOr "
-      "with type Status.");
+      "with type Status. ");
  public:
   template <class ForwardT>
   StatusOr(ForwardT&& x) : statusor_(std::forward<ForwardT>(x)) {

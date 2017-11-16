@@ -10,12 +10,14 @@ set(SRC_FILES
 	cannonical_errors.cpp
 	audiosystem.cpp
 	sampledatam16.cpp
+	instrument.cpp
 	status.cpp
 	brr_file.cpp
 	sdl_audio_utils.cpp
 	make_cleanup.cpp
 	samplers16.cpp
 	zsequence.cpp
+	resourcemanager.cpp
 		
 	PARENT_SCOPE)
 

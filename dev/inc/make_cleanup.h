@@ -20,7 +20,11 @@ class MakeCleanup {
  public:
   explicit MakeCleanup(std::function<void(void)> cleanup_func);
   ~MakeCleanup();
+  // Used to run the clean-up function early and prevent it from running again
+  // upon object destruction.
+  void cleanup();
  private:
+  bool has_cleaned_up_;
   const std::function<void(void)> cleanup_func_;
 };
 

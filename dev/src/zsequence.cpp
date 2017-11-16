@@ -201,7 +201,7 @@ ResourceManager::MapID ZSequence::GetInstrumentID(uint8_t index) const {
 
 std::unique_ptr<ZSequence::NoteEventPlaylist>
     ZSequence::CreateNoteEventPlaylist(int channel,
-        NoteEventPlaylist::Callbacks callbacks) {
+        NoteEventPlaylist::Callbacks callbacks) const {
   const Stream channel_data = GetChannelDataStart(channel);
   const Stream note_data = channel_data + 
       *reinterpret_cast<const uint16_t*>(channel_data + 1);
@@ -213,7 +213,7 @@ std::unique_ptr<ZSequence::NoteEventPlaylist>
 }
 std::unique_ptr<ZSequence::ParameterEventPlaylist>
     ZSequence::CreateParameterEventPlaylist(
-        int channel, ParameterEventPlaylist::Callbacks callbacks) {
+        int channel, ParameterEventPlaylist::Callbacks callbacks) const {
   const Stream parameter_data = GetChannelDataStart(channel) + 3;
 
   auto playlist = new ParameterEventPlaylist(this, parameter_data, callbacks);
@@ -221,7 +221,7 @@ std::unique_ptr<ZSequence::ParameterEventPlaylist>
 }
 std::unique_ptr<ZSequence::MasterEventPlaylist>
     ZSequence::CreateMasterEventPlaylist(
-        MasterEventPlaylist::Callbacks callbacks) {
+        MasterEventPlaylist::Callbacks callbacks) const {
 
   auto playlist = new MasterEventPlaylist(this, master_playlist_, callbacks);
   return std::unique_ptr<MasterEventPlaylist>(playlist);
@@ -236,7 +236,7 @@ std::unique_ptr<ZSequence::MasterEventPlaylist>
 // table.
 //
 // Increases the parent playlist reference counter.
-ZSequence::Playlist::Playlist(ZSequence* parent, Stream playlist, 
+ZSequence::Playlist::Playlist(const ZSequence* parent, Stream playlist, 
     Callbacks callbacks) : 
     in_pattern_(false),
     coda_(false),
@@ -254,7 +254,7 @@ ZSequence::Playlist::Playlist(ZSequence* parent, Stream playlist,
 // Decrease the parent playlist reference counter.
 ZSequence::Playlist::~Playlist() { --(parent_->playlist_refs_); }
 
-ZSequence::Stream ZSequence::Playlist::GetPatternData(int pattern) {
+ZSequence::Stream ZSequence::Playlist::GetPatternData(int pattern) const {
   const uint16_t offset = 
       *(reinterpret_cast<const uint16_t*>(pattern_start_table_) + pattern);
   return playlist_base_ + offset;
@@ -370,7 +370,7 @@ StatusOr<bool> ZSequence::Playlist::Advance() {
 // *                            NoteEventPlaylist                            *
 // ***************************************************************************
 
-ZSequence::NoteEventPlaylist::NoteEventPlaylist(ZSequence* parent,
+ZSequence::NoteEventPlaylist::NoteEventPlaylist(const ZSequence* parent,
     Stream playlist, Callbacks callbacks) : Playlist(parent, playlist, 
         *reinterpret_cast<Playlist::Callbacks*>(&callbacks)),
     callbacks_(callbacks), note_range_(0), velocity_(kVolume100P),
@@ -445,9 +445,10 @@ StatusOr<bool> ZSequence::NoteEventPlaylist::AdvancePatternEvent() {
 // *                         ParameterEventPlaylist                          *
 // ***************************************************************************
 
-ZSequence::ParameterEventPlaylist::ParameterEventPlaylist(ZSequence* parent,
-    Stream playlist, Callbacks callbacks) : Playlist(parent, playlist,
-    *reinterpret_cast<Playlist::Callbacks*>(&callbacks)),
+ZSequence::ParameterEventPlaylist::ParameterEventPlaylist(
+    const ZSequence* parent, Stream playlist, Callbacks callbacks) : 
+    Playlist(parent, playlist, 
+        *reinterpret_cast<Playlist::Callbacks*>(&callbacks)),
     callbacks_(callbacks), pitch_shift_64th_(0) {}
 
 StatusOr<bool> ZSequence::ParameterEventPlaylist::AdvancePatternEvent() {
@@ -513,7 +514,7 @@ StatusOr<bool> ZSequence::ParameterEventPlaylist::AdvancePatternEvent() {
 // *                           MasterEventPlaylist                           *
 // ***************************************************************************
 
-ZSequence::MasterEventPlaylist::MasterEventPlaylist(ZSequence* parent, 
+ZSequence::MasterEventPlaylist::MasterEventPlaylist(const ZSequence* parent, 
     Stream playlist, Callbacks callbacks) : Playlist(parent, playlist,
     *reinterpret_cast<Playlist::Callbacks*>(&callbacks)),
     callbacks_(callbacks) {}

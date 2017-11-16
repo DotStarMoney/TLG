@@ -8,6 +8,10 @@
 #include "audiosystem.h"
 #include "SDL.h"
 
+
+
+/*
+
 int PlaybackTest(audio::SamplerS16* sampler,
     const audio::SampleDataM16& sampler_data) {
   
@@ -50,7 +54,7 @@ int PlaybackTest(audio::SamplerS16* sampler,
   SDL_CloseAudioDevice(dev);
   return 0;
 }
-
+*/
 int main(int argc, char** argv) {
 
   std::cout << "Encoding BRR file...";
@@ -60,6 +64,7 @@ int main(int argc, char** argv) {
           true), 
       util::OkStatus);
 
+  /*
   std::cout << "Reading BRR." << std::endl;
   auto sample = audio::LoadBRR("res/littlelead.brr", true).ConsumeValueOrDie();
 
@@ -71,8 +76,7 @@ int main(int argc, char** argv) {
   sampler.SetVibratoRange(0.5);
   sampler.Play(30);
   return PlaybackTest(&sampler, *sample.get());
-
-  // TODO(?): Resource manager
+  */
 
   // TODO(?): Build Clang Fix or whatever for Google style guide into workflow
   // TODO(?): Need to setup tests, need way to run tests, and to write tests
@@ -83,6 +87,6 @@ int main(int argc, char** argv) {
   // TODO(?): Determine what to do about debug flags
   // TODO(?): Look into allocator, worth tracking memory usage?
   // TODO(?): One final check to apply new stuff to existing code
-  // TODO(?): Start having fun :D!
-  
+  // TODO(?): Start having fun :D
+  return 0;
 }

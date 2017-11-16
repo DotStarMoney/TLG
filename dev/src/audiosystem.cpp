@@ -18,7 +18,7 @@ void AudioSystem::set_oscillator_rate(double rate) {
   oscillator_rate_ = rate / sample_rate_;
 }
 
-float AudioSystem::GetOscillatorValue(uint32_t elapsed_samples) {
+double AudioSystem::GetOscillatorValue(uint32_t elapsed_samples) {
   return static_cast<double>(
       sin(elapsed_samples * oscillator_rate_ * M_PI * 2));
 }

@@ -11,9 +11,10 @@ util::Status status = FUNC_; \
 if (!status.ok()) return status; } while (0)
 
 
-#define __ASSIGN_OR_RETURN_CONCAT(a, b) a ## b
-#define __ASSIGN_OR_RETURN_UNIQUEVAR(VAR_) \
-__ASSIGN_OR_RETURN_CONCAT(VAR_, __LINE__)
+#define __ASSIGN_OR_RETURN_CAT1(a, b) a ## b
+#define __ASSIGN_OR_RETURN_CAT2(a, b) \
+__ASSIGN_OR_RETURN_CAT1(a, b)
+#define __ASSIGN_OR_RETURN_UNIQUEVAR(x) __ASSIGN_OR_RETURN_CAT2(x, __LINE__)
 // Used for functions returning util::StatusOr:
 //   If the function would return a not-ok StatusOr, return the status.
 //   Otherwise, assign the value from StatusOr to ASSIGNEE_. 

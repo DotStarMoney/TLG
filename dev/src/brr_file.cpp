@@ -62,8 +62,8 @@ Status SaveBRR(string_view filename, const BRRData& brr_data) {
   const vector<int8_t> brr_compressed_data = BRRCompress(brr_data.sample_data);
   BRRHeader brr_header{kTLGRTag, kBRRTag, 
       static_cast<uint16_t>(brr_data.sampling_rate),
-      brr_data.opt_for_resynth ? 1 : 0, brr_data.sample_data.size(), 
-      brr_compressed_data.size()};
+      static_cast<uint8_t>(brr_data.opt_for_resynth ? 1 : 0),
+      brr_data.sample_data.size(), brr_compressed_data.size()};
 
   std::ofstream file(filename.data(), std::ios::binary);
   file.write(reinterpret_cast<const char*>(&brr_header), sizeof(brr_header));

@@ -77,11 +77,12 @@ class Instrument : public Resource {
   class CharacteristicInfo {
    friend class Instrument;
    public:
-    const InstrumentCharacteristics::ADSRSeconds envelope;
-    const InstrumentCharacteristics::LoopInfo loop;
+    const InstrumentCharacteristics::ADSRSeconds envelope_;
+    const InstrumentCharacteristics::LoopInfo loop_;
    private:
-    CharacteristicInfo(InstrumentCharacteristics::ADSRSeconds envelope,
-        InstrumentCharacteristics::LoopInfo loop);
+     CharacteristicInfo(InstrumentCharacteristics::ADSRSeconds envelope,
+        InstrumentCharacteristics::LoopInfo loop) : envelope_(envelope), 
+        loop_(loop) {}
   };
   // The actual split information.
   struct SplitData {
@@ -89,18 +90,19 @@ class Instrument : public Resource {
    public:
     // Optional CharacteristicInfo, if = nullptr then there is no character and
     // the default values in InstrumentCharacteristics are assumed.
-    const CharacteristicInfo const* character;
+    const CharacteristicInfo *const character_;
     // The offset in semitones that samples played in this range should be
     // adjusted by. This is so that a sample of higher pitch used to add
     // fidelity for higher semitone offsets will not automatically play back at
     // the higher playback pitch on top of its already high pitch.
-    const int16_t base_offset;
+    const int16_t base_offset_;
     // An index passed into GetSampleID to get the resource id of the sample
     // data this split references.
-    const uint8_t sample_index;
+    const uint8_t sample_index_;
    private:
-    SplitData(const CharacteristicInfo const* characteristic_info,
-        int16_t base_offset, uint8_t sample_index);
+    SplitData(const CharacteristicInfo *const character, int16_t base_offset,
+        uint8_t sample_index) : character_(character), 
+        base_offset_(base_offset), sample_index_(sample_index) {}
   };
 
   // Provided an offset in semitones, get the split data for that offset.
