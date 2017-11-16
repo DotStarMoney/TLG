@@ -17,7 +17,37 @@
 #include "assert.h"
 #include "noncopyable.h"
 
-class Resource {
+// ResourceManager:
+// A thread-safe class to manage static resources such as images, sounds, 
+// etc...
+//
+// ResourceManager is designed for parallelized loading of resources and
+// lock-free acquisition of resources while not loading and unloading.
+//
+// The usage pattern is to register de-serialization functions for a given
+// "extension," register mappings from resource IDs to URIs, then load any
+// resources via their id. Acquisition of resources is accomplished through
+// "Get()" methods, and Get() will not pin the acquired resources in
+// ResourceManager. Unloading a resource with non-destructed references is an
+// error. (TLDR, ResourceManager is NOT a cache)
+// 
+// An "extension" is just an identifier string computed from a URI or from data
+// acquired from a URI that tells ResourceManager what type of deserializer to
+// use.
+//
+// Resource ID parmeters, or mappings, or MapIDs, take the form of a 64bit
+// value: either a 64bit int or 8 byte string.
+
+// Resource:
+// An interface required by classes that wish to be "resources." They also must
+// have:
+// 
+// public:
+//  static constexpr int64_t kResourceUID = ...
+//
+// -such that resource_uid() returns kResourceUID
+//
+class Resource : public util::NonCopyable {
  public:
   virtual ~Resource() {};
   virtual int64_t resource_uid() const = 0;
