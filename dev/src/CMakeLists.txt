@@ -10,7 +10,10 @@ set(SRC_FILES
 	cannonical_errors.cpp
 	audiosystem.cpp
 	sampledatam16.cpp
+	karlsenfl3filter.cpp
 	instrument.cpp
+	stopwatch.cpp
+	sdloutputqueue.cpp
 	status.cpp
 	brr_file.cpp
 	sdl_audio_utils.cpp

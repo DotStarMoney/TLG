@@ -35,6 +35,9 @@ struct Format {
 bool operator==(const Format& lhs, const Format& rhs);
 bool operator!=(const Format& lhs, const Format& rhs);
 
+uint32_t GetSampleFormatBytes(SampleFormat sample_format);
+int GetChannelLayoutChannels(ChannelLayout channel_layout);
+
 } // namespace audio
 
 #endif // AUDIO_FORMAT_H_

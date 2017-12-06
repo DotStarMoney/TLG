@@ -37,15 +37,16 @@ class SampleSupplier {
 // A sample supplier with multiple outputs.
 //
 // **IMPORTANT**
-// channels_ must remain fixed throughout any calls to MultiSampleSupplier
-// until all channels have supplied their samples. This way, a user can check
-// the number of channels, then combine the audio from each channel without
-// worrying about accessing a non-existant channel (since their number is
-// fixed through the duration of the calls)
+// channels_ of a MultiSampleSupplier must remain fixed throughout threaded
+// evaluation of any DAG with MSSs until all channels have supplied their
+// samples. This way, a user can check the number of channels, then combine the
+// audio from each channel whose samples have been provdied without worrying
+// about accessing a non-existant channel or not accessing enough (since their
+// number is fixed through the duration of "ProvideNext" calls)
 //
 template <class SampleT>
 class MultiSampleSupplier {
-public:
+ public:
   typedef typename std::vector<SampleT>::iterator Iter;
   virtual util::Status MultiProvideNextSamples(
     int channel,
@@ -55,9 +56,9 @@ public:
 
   const Format& format() const { return format_; }
   int channels() const { return channels_; }
-protected:
+ protected:
   explicit MultiSampleSupplier(Format format) : format_(format), 
-      channels_(0) {}
+      channels_(1) {}
 
   Format format_;
   int channels_;

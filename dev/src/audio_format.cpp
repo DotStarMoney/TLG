@@ -1,4 +1,6 @@
 #include "audio_format.h"
+
+#include "assert.h"
 #include "tostring.h"
 #include "strcat.h"
 
@@ -24,5 +26,36 @@ std::string Format::ToString() const {
   return util::StrCat("{", format_strings[sample_format], ", ",
       layout_strings[layout], ", ", sampling_rate, "}");
 }
+
+uint32_t GetSampleFormatBytes(SampleFormat sample_format) {
+  switch (sample_format) {
+    case SampleFormat::INT8:
+      return 1;
+    case SampleFormat::INT16:
+      return 2;
+    case SampleFormat::INT32:
+      return 4;
+    case SampleFormat::INT64:
+      return 8;
+    case SampleFormat::FLOAT32:
+      return 4;
+    case SampleFormat::FLOAT64:
+      return 8;
+    default:
+      ASSERT(false);
+  }
+}
+
+int GetChannelLayoutChannels(ChannelLayout channel_layout) {
+  switch (channel_layout) {
+  case ChannelLayout::MONO:
+    return 1;
+  case ChannelLayout::STEREO:
+    return 2;
+  default:
+    ASSERT(false);
+  }
+}
+
 
 } // namespace audio

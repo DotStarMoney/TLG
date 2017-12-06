@@ -1,11 +1,16 @@
 #ifndef AUDIO_AUDIOSYSTEM_H_
 #define AUDIO_AUDIOSYSTEM_H_
 
+#include <atomic>
 #include <stdint.h>
 #include <string_view>
+#include <array>
 
 #include "audio_format.h"
+#include "audiocontext.h"
 #include "status.h"
+#include "stopwatch.h"
+#include "samplers16.h"
 
 // Individual sampler commands and global state commands get buffered, then 
 // all that were buffered are cleared from the buffer.
@@ -34,20 +39,13 @@ namespace audio {
 // AudioComponents that reference it.
 class AudioSystem {
  public:
-  AudioSystem(SampleRate sample_rate);
+  static constexpr int kPolyphony = 8;
+  AudioSystem(std::unique_ptr<AudioQueue> audio_queue,
+      std::unique_ptr<util::Stopwatch> stopwatch);
 
-  // Should include builder style playback options
-  /*
+  void SetContext(AudioContext* context);
 
-
-  util::Status CreateSampler(std::string_view resource_id);
-
-  // For polyphony
-  util::Status CreateMultiSampler(std::string_view resource_id);
-
-  // has override methods for tempo/volume/pan
-  util::Status CreateSequence(std::string_view resource_id);
-  */
+  void Sync();
 
   void set_oscillator_rate(double rate);
   // Get a value from a system wide oscillator with oscillations between -1 and
@@ -59,6 +57,12 @@ class AudioSystem {
   const SampleRate sample_rate_;
   // An oscillator rate in Cycles / Sample.
   double oscillator_rate_;
+
+  std::atomic<AudioContext*> next_context_;
+  AudioContext* current_context_;
+
+  std::unique_ptr<AudioQueue> audio_queue_;
+  std::unique_ptr<util::Stopwatch> stopwatch_;
 };
 
 // Child objects of an AudioSystem.
@@ -68,6 +72,7 @@ class AudioComponent {
  protected:
   // Not owned.
   AudioSystem* const parent_;
+
 };
 
 } // namespace audio

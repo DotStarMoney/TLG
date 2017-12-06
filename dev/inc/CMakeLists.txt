@@ -4,12 +4,18 @@ project(TLG)
 set(HDR_FILES 
 	
 	external/flat_hash_map.h
-	
+	external/threadpool.h
+
 	abort.h
+	audio_filter.h
+	karlsenfl3filter.h
+	sdloutputqueue.h
 	audio_defaults.h
 	assert.h
 	audio_format.h
+	audiocontext.h
 	audiosystem.h
+	outputqueue.h
 	deleterptr.h
 	bit_utils.h
 	brr.h
@@ -17,6 +23,8 @@ set(HDR_FILES
 	sdl_audio_utils.h
 	instrument.h
 	instrument_characteristics.h
+	sharedsamplers16.h
+	stopwatch.h
 	cannonical_errors.h
 	make_cleanup.h
 	fixed_point.h

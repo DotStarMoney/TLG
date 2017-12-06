@@ -193,7 +193,7 @@ public:
     struct Callbacks : public Playlist::Callbacks {
       // Set the channel volume and delay the next event by a number of ticks.
       //
-      // Volume ranges from [0, 1], with 0.5 representing no volume change.
+      // Volume is a multiplier applied to each sample.
       std::function<void(double volume, uint16_t total_duration)>
           set_volume_callback;
       // Set the channel pan and delay the next event by a number of ticks.
@@ -234,7 +234,7 @@ public:
     struct Callbacks : public Playlist::Callbacks {
       // Set the channel volume and delay the next event by a number of ticks.
       //
-      // Volume ranges from [0, 1], with 0.5 representing no volume change.
+      // Volume is a multiplier applied to each sample.
       std::function<void(double volume, uint16_t total_duration)>
           set_master_volume_callback;
       // Set the master pan and delay the next event by a number of ticks.

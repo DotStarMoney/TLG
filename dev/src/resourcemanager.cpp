@@ -20,9 +20,10 @@ ResourceManager::ResourceManager() : total_resource_bytes(0) {}
 
 ResourceManager::~ResourceManager() {
   // Fail if outstanding references exist.
-  for (auto& resource_entry_kv : resources_) {
-    auto& resource_entry = resource_entry_kv.second;
-    ASSERT_EQ(resource_entry->references.load(), 0);
+  for (const auto& resource_entry_kv : resources_) {
+    const auto& resource_entry = resource_entry_kv.second;
+    ASSERT_EQ(resource_entry->weak_references.load(), 0);
+    ASSERT_EQ(resource_entry->strong_references.load(), 0);
   }
 }
 
@@ -58,6 +59,7 @@ Status ResourceManager::RegisterDeserializer(const std::string& uri_extension,
   return util::OkStatus;
 }
 
+// Not synchronized
 util::StatusOr<ResourceManager::ResourceEntry*>
     ResourceManager::GetResourceEntry(MapID id) {
   auto resource_iter = resources_.find(id);
@@ -108,8 +110,8 @@ Status ResourceManager::Load(MapID id) {
   // No need to reload if its already loaded
   if (resource_entry->resource) return util::OkStatus;
   RETURN_IF_ERROR(AddToPool(resource_entry->pool, resource->GetUsageBytes()));
+  resource->parent_entry_ = resource_entry;
   resource_entry->resource = std::move(resource);
-
   return util::OkStatus;
 }
 
@@ -125,10 +127,18 @@ Status ResourceManager::Unload(MapID id) {
   // No need to unload if its already unloaded
   if (!resource_entry->resource) return util::OkStatus;
 
-  if (resource_entry->references.load() > 0) {
+  if (resource_entry->weak_references.load() > 0) {
     return util::FailedPreconditionError(
         StrCat("Cannot unload resource with id : ", id, " while outstanding "
         "references to it exist."));
+  }
+
+  // If there are outstanding strong references, release the mutex, and spin
+  // until there are no more strong references.
+  if (resource_entry->strong_references.load() > 0) {
+    lock.unlock();
+    while(resource_entry->strong_references.load() > 0); 
+    lock.lock();
   }
 
   RETURN_IF_ERROR(AddToPool(resource_entry->pool,
@@ -194,6 +204,7 @@ StatusOr<ResourceManager::ResourceEntry*> ResourceManager::InternalGet(
   return resource_entry;
 }
 
+// Not synchronized
 StatusOr<ResourceManager::DeserializerFunction>
     ResourceManager::GetDeserializer(const std::string& extension) const {
   auto deserializer_iter = deserializers_.find(extension);
@@ -204,6 +215,7 @@ StatusOr<ResourceManager::DeserializerFunction>
   return deserializer_iter->second;
 }
 
+// Not synchronized
 Status ResourceManager::AddToPool(PoolID id, int64_t bytes) {
   if (id == kDefaultPoolMembership) {
     total_resource_bytes += bytes;

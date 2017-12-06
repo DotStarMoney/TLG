@@ -47,14 +47,10 @@
 //
 // -such that resource_uid() returns kResourceUID
 //
-class Resource : public util::NonCopyable {
- public:
-  virtual ~Resource() {};
-  virtual int64_t resource_uid() const = 0;
-  virtual int64_t GetUsageBytes() const = 0;
-};
 
+class Resource;
 class ResourceManager : public util::NonCopyable {
+  friend class Resource;
  public:
   typedef uint64_t MapID;
   typedef uint64_t PoolID;
@@ -129,19 +125,53 @@ class ResourceManager : public util::NonCopyable {
   util::Status RegisterPool(PoolID id, int64_t size_bytes);
 
   int64_t GetTotalResourceBytes() const;
- private:
+
+  // Make a resource handle strongly referenced, i.e., it will block unloading
+  // of itself until the strong reference is released.
+  //
+  // **IMPORTANT** Resources should only be made strongly referenced it they
+  // are going to continue existing for an extremely short amount of time
+  //
+  // **IMPORTANT** Resources can only be made strongly referenced when they are
+  // not already being unloaded! In other words, resource unloading and making
+  // strong references must be externally synchronized.
+  //
+  template <class T>
+  static ResourcePtr<T> MakeStrongReference(ResourcePtr<T> resource) {
+    
+    ResourceEntry* resource_entry = 
+        reinterpret_cast<Resource*>(resource.get())->parent_entry_;
+
+    // We increment the strong reference counter before decrementing the weak
+    // reference counter so that a failure to externally synchronize this
+    // method with resource unloading manifests as unloading a resource with
+    // outstanding weak references only, and never occasionally results in a 
+    // successful spin lock.
+    ++(resource_entry->strong_references);
+    --(resource_entry->weak_references);
+
+    return ResourcePtr<T>(resource.release(),
+        [resource_entry](const T*) { --(resource_entry->strong_references); });
+  }
+
   // Used to convert string ids to proper MapID type ids. 
   static MapID StringToMapID(std::string_view id);
+ private:
 
   struct ResourceEntry {
     ResourceEntry(std::string_view uri, PoolID pool = kDefaultPoolMembership)
-        : references(0), uri(uri), pool(pool) {}
+        : weak_references(0), strong_references(0), uri(uri), pool(pool) {}
 
     std::unique_ptr<Resource> resource;
+    // # of references that must be released before the resource is unloaded
+    //
     // Note: we modify this value in Get() although it is const. This is okay,
     // because we're modifying the data in the pointer to this ResourceEntry,
     // not the pointer itself!
-    std::atomic_uint32_t references;
+    std::atomic_uint32_t weak_references;
+    // # of references that will block a call to unload this resource until
+    // released.
+    std::atomic_uint32_t strong_references;
     std::string uri;
     PoolID pool;
   };
@@ -186,7 +216,18 @@ class ResourceManager : public util::NonCopyable {
 
   // Ensures that loading/unloading and other state manipulation doesn't clash
   // with resource gettin' which can happen concurrently.
-  mutable std::shared_mutex shared_lock;
+  std::shared_mutex shared_lock;
 };
+
+class Resource : public util::NonCopyable {
+  friend class ResourceManager;
+public:
+  virtual ~Resource() {};
+  virtual int64_t resource_uid() const = 0;
+  virtual int64_t GetUsageBytes() const = 0;
+private:
+  ResourceManager::ResourceEntry* parent_entry_;
+};
+
 
 #endif // RESOURCEMANAGER_H_

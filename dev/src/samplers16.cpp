@@ -40,15 +40,6 @@ constexpr float kPlaybackRatePortamento = 0.02f;
 // exactly set to an incoming playback rate.
 constexpr float kInitialRateTarget = -1;
 
-// True iff the provided pitch shift is something the sampler can use.
-bool IsValidPitchShift(float pitch) {
-  return std::isfinite(pitch);
-}
-// True iff the provided volume value is something the sampler can use.
-bool IsValidVolume(float volume) {
-  return (volume >= 0.0) && (volume <= 1.0);
-}
-
 InstrumentCharacteristics::ADSRSamples ADSRSecondsToSamples(
     const InstrumentCharacteristics::ADSRSeconds& adsr_seconds,
     SampleRate rate) {
@@ -61,14 +52,10 @@ InstrumentCharacteristics::ADSRSamples ADSRSecondsToSamples(
     
 // We've got a lot of parameters to initialize here, see the breakdown:
 SamplerS16::SamplerS16(AudioSystem* const parent) :
-    AudioComponent(parent), 
-    SampleSupplier({INT16, STEREO, parent->sample_rate()}), 
+    AudioComponent(parent),
+    SampleSupplier({INT16, STEREO, parent_->sample_rate()}), 
     state_(kStopped),               // we aren't playing anything...
-    status_(util::OkStatus),        // no issues yet...
-    pan_(kPanMiddle),               // pan to the middle
-    pitch_shift_(0.0),              // pitch shift to 0 semitones
-    volume_(kVolume100P),           // no volume change
-    vibrato_range_(0.0),            // vibrato range to 0 semitones
+    playback_parameters_(nullptr),  // no playback parameters yet
     playback_pitch_shift_(0.0),     // this will be set whenever Play is
                                     //   called; any default will do
     playback_volume_(kVolume100P),  // no volume change.
@@ -284,13 +271,15 @@ util::Status SamplerS16::ProvideNextSamples(
     return util::OkStatus;
   }
   
-  const double volume_multiplier = (playback_volume_ * volume_) * 4.0;
-  const float semitone_offset = playback_pitch_shift_ + pitch_shift_;
-  const float pan_percent_r = (pan_ + 1.0f) * 0.5f;
+  const double volume_multiplier = playback_volume_ * 
+      playback_parameters_->volume;
+  const float semitone_offset = playback_pitch_shift_ + 
+      playback_parameters_->pitch_shift;
+  const float pan_percent_r = (playback_parameters_->pan + 1.0f) * 0.5f;
   do {
     int16_t sample = 0;
     const double final_offset = semitone_offset + 
-        parent_->GetOscillatorValue(sample_clock) * vibrato_range_;
+        parent_->GetOscillatorValue(sample_clock) * playback_parameters_->vibrato_range;
 
     sample = IterateNextSample(static_cast<float>(final_offset));
     
@@ -328,7 +317,7 @@ void SamplerS16::ExpandLoopInfo() {
 }
 
 void SamplerS16::ArmSample(const SampleDataM16* sample) {
-  Stop();
+  ASSERT_EQ(state_, kStopped);
   sample_ = sample;
   if (sample == nullptr) return;
   ASSERT_EQ(sample->format(),
@@ -339,9 +328,14 @@ void SamplerS16::ArmSample(const SampleDataM16* sample) {
   ExpandLoopInfo();
 }
 
+void SamplerS16::ArmParameters(const Parameters* parameters) {
+  ASSERT_EQ(state_, kStopped);
+  playback_parameters_ = parameters;
+}
+
 void SamplerS16::ArmLoop(
     const InstrumentCharacteristics::LoopInfo* loop_info) {
-  Stop();
+  ASSERT_EQ(state_, kStopped);
   if (loop_info == nullptr) {
     loop_info_levels_ = &default_loop_info;
     return;
@@ -353,7 +347,7 @@ void SamplerS16::ArmLoop(
 
 void SamplerS16::ArmEnvelope(
     const InstrumentCharacteristics::ADSRSeconds* envelope) {
-  Stop();
+  ASSERT_EQ(state_, kStopped);
   if (envelope == nullptr) {
     envelope_ = &default_envelope;
     return;
@@ -371,31 +365,15 @@ void SamplerS16::Stop() {
 }
 
 void SamplerS16::Play(float semitone_shift, float volume) {
-  // Since we check for any malformed input parameters to the sampler, we can
-  // assume we're okay at this point.
-  status_ = util::OkStatus;
+  ASSERT_NE(playback_parameters_, nullptr);
+  ASSERT_NE(sample_, nullptr);
+  ASSERT_EQ(state_, kStopped);
 
-  if (!IsValidPitchShift(semitone_shift)) {
-    status_ = util::InvalidArgumentError(
-      "Provided playback pitch shift is not finite.");
-    return;
-  }
-  
-  if (!IsValidVolume(volume)) {
-    status_ = util::InvalidArgumentError(
-      StrCat("Playback volume parameter must be in range [0.0, 1.0], got ",
-        volume, "."));
-    return;
-  }
-
-  if (sample_ == nullptr) return;
-  
   if (state_ == kPaused) {
     state_ = kPlaying;
     return;
   }
 
-  Stop();
   state_ = kPlaying;
   playback_pitch_shift_ = semitone_shift;
   playback_volume_ = volume;
@@ -410,44 +388,6 @@ void SamplerS16::Release() {
   if ((state_ != kPlaying) || releasing_) return;
   releasing_ = true;
   playback_released_samples_ = playback_elapsed_samples_;
-}
-
-void SamplerS16::SetPan(float pan) {
-  if ((pan < -1.0) || (pan > 1.0)) {
-    status_ = util::InvalidArgumentError(
-        StrCat("Panning parameter must be in range [-1.0, 1.0], got ", 
-            pan, "."));
-    return;
-  }
-  pan_ = pan;
-}
-
-void SamplerS16::SetPitchShift(float semitone_shift) {
-  if (!IsValidPitchShift(semitone_shift)) {
-    status_ = util::InvalidArgumentError(
-        "Provided pitch shift is not finite.");
-    return;
-  }
-  pitch_shift_ = semitone_shift;
-}
-
-void SamplerS16::SetVolume(float volume) {
-  if (!IsValidVolume(volume)) {
-    status_ = util::InvalidArgumentError(
-      StrCat("Volume parameter must be in range [0.0, 1.0], got ",
-        volume, "."));
-    return;
-  }
-  volume_ = volume;
-}
-
-void SamplerS16::SetVibratoRange(float range_semitones) {
-  if (!IsValidPitchShift(range_semitones)) {
-    status_ = util::InvalidArgumentError(
-      "Provided vibrato range is not finite.");
-    return;
-  }
-  vibrato_range_ = range_semitones;
 }
 
 } // namespace audio

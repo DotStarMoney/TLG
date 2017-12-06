@@ -206,8 +206,7 @@ std::unique_ptr<ZSequence::NoteEventPlaylist>
   const Stream note_data = channel_data + 
       *reinterpret_cast<const uint16_t*>(channel_data + 1);
 
-  // We do this instead of make_unique here and below for to member access
-  // reasons
+  // We do this instead of make_unique here and below for member access reasons
   auto playlist = new NoteEventPlaylist(this, note_data, callbacks);
   return std::unique_ptr<NoteEventPlaylist>(playlist);
 }

@@ -25,29 +25,53 @@ class SamplerS16 : public AudioComponent, public SampleSupplier<int16_t> {
  public:
   explicit SamplerS16(AudioSystem* const parent);
 
+  // Playback parameters provided externally.
+  struct Parameters {
+    Parameters() : pan(kPanMiddle), pitch_shift(0), volume(kVolume100P),
+        vibrato_range(0) {}
+
+    // L to R panning between -1 and 1
+    float pan;
+    // Pitch shift in semitones.
+    float pitch_shift;
+    // A value between 0 and 1 (multiplied with playback_volume_) used to
+    // produce a volume mapping for each sample.
+    float volume;
+    // Vibrato range in semitones.
+    float vibrato_range;
+  };
+
   enum State {
     kStopped = 0,
     kPaused = 1,
     kPlaying = 2
   };
 
-  // Call Stop and set the sample data. Arming a nullptr wil default to playing
-  // silence.
+  // NOTE: Playback MUST be stopped before any Arm* method, or a call to Play
+  // can take effect.
+ 
+  // Set the sample data.
   void ArmSample(const SampleDataM16* sample);
-  // Call Stop and set the loop info. Arming a nullptr will default to using
-  // the InstrumentCharacteristics default loop info.
+  // Set the playback parameters. These have no default, and therefore must be
+  // set before playback can take place.
+  void ArmParameters(const Parameters* parameters);
+  // Set the loop info. Arming a nullptr will default to using the
+  // InstrumentCharacteristics default loop info.
   void ArmLoop(const InstrumentCharacteristics::LoopInfo* loop_info);
-  // Call Stop and set the envelope. Arming a nullptr will default to using the
+  // Set the envelope. Arming a nullptr will default to using the
   // InstrumentCharacteristics default envelope.
   void ArmEnvelope(const InstrumentCharacteristics::ADSRSeconds* envelope);
 
   // Stop playback and prepare the sampler for another playback. 
   void Stop();
 
-  // If stopped or playing: start a new playback.
+  // If stopped: start a new playback.
   // If paused: resume playback at the previous semitone shift and volume, 
   // regardless of how they're set here.
-  void Play(float semitone_shift = 0.0, float volume_ = 0.5);
+  //
+  // The volume provided here is multiplied with the parameter volume to
+  // compute the per-sample volume multiplier.
+  void Play(float semitone_shift = 0.0, float volume_ = 1.0);
   
   // Pause any on-going playback.
   void Pause();
@@ -55,28 +79,7 @@ class SamplerS16 : public AudioComponent, public SampleSupplier<int16_t> {
   // Start releasing a sample if its playing or paused.
   void Release();
 
-  // Sets playback panning. [pan] is from -1 to 1, corresponding to an all the
-  // way left, and to an all the way right panning.
-  void SetPan(float pan);
-
-  // Sets the playback pitch shift in semitones. [semitone_shift] must be
-  // finite.
-  void SetPitchShift(float semitone_shift);
-
-  // Sets the volume mapping value. [volume] is from 0 to 1, corresponding to
-  //(0) silence, (0.5) no volume change, and (1) twice the amplitude.
-  void SetVolume(float volume);
-
-  // Sets the vibrato range in semitones. [range_semitones] must be finite.
-  void SetVibratoRange(float range_semitones);
-
   State state() const { return state_; }
-  bool armed() const { return sample_ != nullptr; }
-  float pan() const { return pan_; }
-  float pitch_shift() const { return pitch_shift_; }
-  float volume() const { return volume_; }
-  float vibrato_range() const { return vibrato_range_; }
-  const util::Status& status() const { return status_; }
 
   util::Status ProvideNextSamples(
       Iter samples_start,
@@ -86,27 +89,8 @@ class SamplerS16 : public AudioComponent, public SampleSupplier<int16_t> {
  private:
   State state_;
 
-  // Operation of the sampler is undefined when status_ is not ok.
-  util::Status status_;
-
-  // Theres no real reason to use floats over doubles here other than floats
-  // are less precise and "arguably" could contribue to interesting sound
-  // characteristics of sample playback.
-  //
-  // L to R panning between -1 and 1
-  float pan_;
-  // Pitch shift in semitones.
-  float pitch_shift_;
-  // A value between 0 and 1 (multiplied with playback_volume_) used to produce
-  // a volume mapping for each sample. Samples are mapped by multiplying
-  // volume_ by playback_volume_ then multiplying this value by 4 then by the
-  // sample value. In this way, there is no volume change when volume_ and
-  // playback_volume_ = 0.5, and the volume is quadruplued when both are set to
-  // 1.0.
-  float volume_;
-  // Vibrato range in semitones.
-  float vibrato_range_;
-
+  // The playback parameters.
+  const Parameters* playback_parameters_;
   // A pitch shift in semitones that is the base pitch offset used to compute
   // a playback rate for sample playback.
   float playback_pitch_shift_;
