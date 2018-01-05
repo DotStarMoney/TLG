@@ -3,23 +3,17 @@ project(TLG)
 set(THIS ${CMAKE_CURRENT_LIST_DIR})
 
 # ----------------------------- ADD SUBDIRECTORIES -----------------------------
-add_subdirectory(${THIS}/audio)
-add_subdirectory(${THIS}/base)
-add_subdirectory(${THIS}/external)
-add_subdirectory(${THIS}/storage)
-add_subdirectory(${THIS}/thread)
-add_subdirectory(${THIS}/util)
 
 # -------------------------- ADD SOURCES IN DIRECTORY --------------------------
 set(SRC_FILES 
 	"${SRC_FILES}"
-	
-	${THIS}/main.cc
 		
 	PARENT_SCOPE)
 
 # -------------------------- ADD HEADERS IN DIRECTORY --------------------------
 set(HDR_FILES 
 	"${HDR_FILES}"
-			
+	
+	${THIS}/flat_hash_map.h
+	
 	PARENT_SCOPE)
