@@ -1,21 +1,42 @@
 cmake_minimum_required(VERSION 3.2)
 project(TLG)
-set(THIS ${CMAKE_CURRENT_LIST_DIR})
 
 # ----------------------------- ADD SUBDIRECTORIES -----------------------------
 
-# -------------------------- ADD SOURCES IN DIRECTORY --------------------------
-set(SRC_FILES 
-	"${SRC_FILES}"
-		
-	PARENT_SCOPE)
+# -------------------------------- BUILD TARGETS -------------------------------
+#_______________________________________________________________________________
+#base::abort
+add_library(base_abort INTERFACE)
+target_sources(base_abort INTERFACE
+	abort.h)
 
-# -------------------------- ADD HEADERS IN DIRECTORY --------------------------
-set(HDR_FILES 
-	"${HDR_FILES}"
+#_______________________________________________________________________________
+#base::abort test
+add_executable(base_abort_test
+	abort_test.cc)
+target_link_libraries(base_abort_test
+	gtest
+	gtest_main)
+add_test(base_abort base_abort_test)
+
+#_______________________________________________________________________________
+#base::static_type_assert
+add_library(base_static_type_assert INTERFACE)
+target_sources(base_static_type_assert INTERFACE
+	static_type_assert.h)
 	
-	${THIS}/abort.h
-	${THIS}/platform.h
-	${THIS}/static_type_assert.h
-	
-	PARENT_SCOPE)
+#_______________________________________________________________________________
+#base::static_type_assert test
+add_executable(base_static_type_assert_test
+	static_type_assert_test.cc)
+target_link_libraries(base_static_type_assert_test
+	gtest
+	gtest_main)
+add_test(base_static_type_assert base_static_type_assert_test)
+
+# ----------------------------------- FOLDER -----------------------------------
+set_target_properties(
+	base_static_type_assert_test 
+	base_abort_test
+	PROPERTIES FOLDER base)
+

@@ -1,39 +1,60 @@
 cmake_minimum_required(VERSION 3.2)
 project(TLG)
-set(THIS ${CMAKE_CURRENT_LIST_DIR})
 
 # ----------------------------- ADD SUBDIRECTORIES -----------------------------
 
-# -------------------------- ADD SOURCES IN DIRECTORY --------------------------
-set(SRC_FILES 
-	"${SRC_FILES}"
-		
-	${THIS}/bits.cc
-	${THIS}/cannonical_errors.cc
-	${THIS}/make_cleanup.cc
-	${THIS}/status.cc
-		
-	PARENT_SCOPE)
-
-# -------------------------- ADD HEADERS IN DIRECTORY --------------------------
-set(HDR_FILES 
-	"${HDR_FILES}"
+# -------------------------------- BUILD TARGETS -------------------------------
+#_______________________________________________________________________________
+#util::assert
+add_library(util_assert INTERFACE)
+target_sources(util_assert INTERFACE
+	assert.h)
 	
-	${THIS}/assert.h
-	${THIS}/bits.h
-	${THIS}/cannonical_errors.h
-	${THIS}/deleterptr.h
-	${THIS}/fixed_point.h
-	${THIS}/loan.h
-	${THIS}/make_cleanup.h
-	${THIS}/noncopyable.h
-	${THIS}/pstruct.h
-	${THIS}/reflect.h
-	${THIS}/status.h
-	${THIS}/status_macros.h
-	${THIS}/statusor.h	
-	${THIS}/stopwatch.h
-	${THIS}/strcat.h	
-	${THIS}/tostring.h
-		
-	PARENT_SCOPE)
+#_______________________________________________________________________________
+#util::assert test
+add_executable(util_assert_test
+	assert_test.cc)
+target_link_libraries(util_assert_test
+	gtest
+	gtest_main)
+add_test(util_assert util_assert_test)
+	
+#_______________________________________________________________________________
+#util::bits
+add_library(util_bits
+	bits.cc
+	bits.h)
+
+#_______________________________________________________________________________
+#util::bits test
+add_executable(util_bits_test
+	bits_test.cc)
+target_link_libraries(util_bits_test
+	util_bits
+	gtest
+	gtest_main)
+add_test(util_bits util_bits_test)
+
+#_______________________________________________________________________________
+#util::deleterptr
+add_library(util_deleterptr INTERFACE)
+target_sources(util_deleterptr INTERFACE
+	deleterptr.h)
+	
+#_______________________________________________________________________________
+#util::deleterptr test
+add_executable(util_deleterptr_test
+	deleterptr_test.cc)
+target_link_libraries(util_deleterptr_test
+	gtest
+	gtest_main)
+add_test(util_deleterptr util_deleterptr_test)
+
+# ----------------------------------- FOLDER -----------------------------------
+set_target_properties(
+	util_assert_test
+	util_bits
+	util_bits_test
+	util_deleterptr_test
+	PROPERTIES FOLDER util)
+

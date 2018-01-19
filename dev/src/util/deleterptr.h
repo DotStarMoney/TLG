@@ -11,10 +11,8 @@
 //
 //
 namespace util {
-
-template<class T>
+template <class T>
 using deleter_ptr = std::unique_ptr<T, std::function<void(T*)>>;
+}  // namespace util
 
-} // namespace util
-
-#endif // UTIL_DELETERPTR_H_
+#endif  // UTIL_DELETERPTR_H_

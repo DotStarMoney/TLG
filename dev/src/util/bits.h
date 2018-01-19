@@ -1,19 +1,21 @@
 #ifndef UTIL_BITS_H_
 #define UTIL_BITS_H_
 
-#include <stdint.h>
+#include <cstdint>
 
 #include "base/static_type_assert.h"
 
 namespace util {
 
 template <class T>
-inline T AllOnes() { return ~static_cast<T>(0); }
+inline T AllOnes() {
+  return ~static_cast<T>(0);
+}
 
 // Unused bits of value can be garbage.
 template <class T, class V>
 inline T SignExtend(V value, int bits) {
-  type_assert::IsIntegral<T, V>();
+  base::type_assert::AssertIsIntegral<T, V>();
   T mask = AllOnes<T>() << bits;
   T high_bit = ((value >> (bits - 1)) & 1);
   return (value & ~mask) | (mask * high_bit);
@@ -35,7 +37,7 @@ namespace varint {
 // Given a stream pointing to a varint, return the value of the varint while
 // advancing the stream pointer to the next value.
 uint16_t GetVarintAndInc(const uint8_t** stream);
-} // namespace varint
-} // namespace util
+}  // namespace varint
+}  // namespace util
 
-#endif // UTIL_BITS_H_
+#endif  // UTIL_BITS_H_

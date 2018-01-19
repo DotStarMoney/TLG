@@ -2,8 +2,8 @@
 #define BASE_ABORT_H_
 
 #include <cstdlib>
-#include <string_view>
 #include <iostream>
+#include <string_view>
 
 namespace base {
 
@@ -12,6 +12,6 @@ inline void abort(const std::string_view& msg) {
   std::abort();
 }
 
-} // namespace base
+}  // namespace base
 
-#endif // BASE_ABORT_H_
+#endif  // BASE_ABORT_H_

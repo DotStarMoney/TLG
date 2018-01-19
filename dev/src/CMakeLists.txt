@@ -1,25 +1,30 @@
 cmake_minimum_required(VERSION 3.2)
 project(TLG)
-set(THIS ${CMAKE_CURRENT_LIST_DIR})
+set(LOCAL ${CMAKE_CURRENT_LIST_DIR})
 
 # ----------------------------- ADD SUBDIRECTORIES -----------------------------
-add_subdirectory(${THIS}/audio)
-add_subdirectory(${THIS}/base)
-add_subdirectory(${THIS}/external)
-add_subdirectory(${THIS}/storage)
-add_subdirectory(${THIS}/thread)
-add_subdirectory(${THIS}/util)
+#add_subdirectory(${LOCAL}/audio)
+add_subdirectory(${LOCAL}/base)
+#add_subdirectory(${LOCAL}/external)
+#add_subdirectory(${LOCAL}/storage)
+#add_subdirectory(${LOCAL}/thread)
+add_subdirectory(${LOCAL}/util)
 
-# -------------------------- ADD SOURCES IN DIRECTORY --------------------------
-set(SRC_FILES 
-	"${SRC_FILES}"
-	
-	${THIS}/main.cc
-		
-	PARENT_SCOPE)
+# -------------------------------- BUILD TARGETS -------------------------------
 
-# -------------------------- ADD HEADERS IN DIRECTORY --------------------------
-set(HDR_FILES 
-	"${HDR_FILES}"
-			
-	PARENT_SCOPE)
+# TLG
+#add_executable(TLG ${LOCAL}/main.cc)
+#target_link_libraries(TLG
+#	debug SDL2-staticd optimized SDL2-static
+#	debug SDL2maind    optimized SDL2main
+#	winmm.lib
+#	imm32.lib
+#	version.lib)
+# Make a copy of resources for the binaries directly
+#if(WIN32)
+#	add_custom_command(TARGET TLG POST_BUILD
+#		COMMAND robocopy \"$(SolutionDir)..\\res" \"$(TargetDir)res\\" /s /purge)
+#endif()
+#if(UNIX)
+#	#
+#endif()
