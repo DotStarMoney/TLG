@@ -1,4 +1,4 @@
 if not exist build mkdir build
 cd build
-cmake ..
+cmake .. -DCMAKE_GENERATOR_PLATFORM=x64
 cd ..

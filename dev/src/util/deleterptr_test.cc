@@ -13,6 +13,7 @@ TEST(DeleterPtrTest, RunOnDelete) {
       // function was actually ran.
       dummy = 20;
     });
+		EXPECT_EQ(dummy, 56);
   }
   EXPECT_EQ(dummy, 20);
 }
