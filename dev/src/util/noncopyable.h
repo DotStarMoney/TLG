@@ -21,8 +21,6 @@ class NonCopyable {
   void operator=(NonCopyable const&) = delete;
 };
 
-} // namespace util
+}  // namespace util
 
-#endif // UTIL_NONCOPYABLE_H_
-
-
+#endif  // UTIL_NONCOPYABLE_H_

@@ -1,15 +1,10 @@
 #include "util/status.h"
 
-#include <iostream>
-
-#include "util/cannonical_errors.h"
-#include "util/strcat.h"
+#include "absl/strings/str_cat.h"
 
 namespace util {
 
-Status::~Status() {
-  MaybeDereference(handle_);
-}
+Status::~Status() { MaybeDereference(handle_); }
 
 Status::Status() : handle_(nullptr) {}
 
@@ -39,7 +34,7 @@ Status& Status::operator=(Status&& status) {
 
 bool Status::ok() const { return handle_ == nullptr; }
 
-std::string_view Status::message() const { 
+absl::string_view Status::message() const {
   if (handle_ == nullptr) return "";
   return handle_->message;
 }
@@ -48,7 +43,7 @@ error::CannonicalErrors Status::cannonical_error_code() const {
 }
 
 void Status::MaybeDereference(Payload* handle_) {
-  if(handle_ == nullptr) return;
+  if (handle_ == nullptr) return;
   // Since loading the ref count should be a singular "mov," we can hopefully
   // avoid the atomic fetch_sub by doing a check == 1 first.
   if ((handle_->refs.load() == 1) || (handle_->refs.fetch_sub(1) == 0)) {
@@ -68,13 +63,13 @@ bool Status::SlowComparePayloadsForEquality(Payload* lhs, Payload* rhs) {
 
 std::string Status::ToString() const {
   if (ok()) return "Ok.";
-  
-  return util::StrCat(
+
+  return absl::StrCat(
       util::error::CannonicalErrorString[cannonical_error_code()], ": ",
       message());
 }
 
-// First try and check pointers, if no luck we have to compare them the long 
+// First try and check pointers, if no luck we have to compare them the long
 // way.
 bool operator==(const Status& lhs, const Status& rhs) {
   if ((lhs.handle_ == rhs.handle_) ||
@@ -83,11 +78,8 @@ bool operator==(const Status& lhs, const Status& rhs) {
   }
   return false;
 }
-bool operator!=(const Status& lhs, const Status& rhs) {
-  return !(lhs == rhs);
-}
+bool operator!=(const Status& lhs, const Status& rhs) { return !(lhs == rhs); }
 
 const Status OkStatus;
 
-} // namespace util
-
+}  // namespace util

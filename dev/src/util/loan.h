@@ -3,13 +3,13 @@
 
 #include <atomic>
 
-#include "base/assert.h"
+#include "glog/logging.h"
 #include "util/noncopyable.h"
 
 namespace util {
 
 // Loan and Lender together help safely implementing the generator pattern.
-// One class, a Lender, can create Loan objects that that must not outlive the 
+// One class, a Lender, can create Loan objects that that must not outlive the
 // Lender (and are safely caught using reference counting if so).
 //
 // A common example is a parent class creating an object for a client that
@@ -27,23 +27,25 @@ class Loan : public NonCopyable {
  public:
   ~Loan() {
     // If we hae been "moved out of," we'll have nothing to decrement.
-    if (lender_ref != nullptr) --(*lender_ref_);
+    if (loaned_ptr_ != nullptr) --(*lender_ref_);
   }
 
   // The move constructor invalidates the old reference.
   Loan(Loan&& loan)
       : lender_ref_(loan.lender_ref_), loaned_ptr_(loan.loaned_ptr_) {
-    loan.lender_ref = nullptr;
+    loan.loaned_ptr_ = nullptr;
   }
   // Because these operations involve a comparison, its best to store the
   // the pointer using get() and access a loaned object that way.
-  T& operator*() const { 
-    ASSERT_NE(lender_ref_, nullptr); 
+  T& operator*() const {
+    CHECK_NE(loaned_ptr_, reinterpret_cast<T*>(nullptr))
+        << "Loaned ptr invalidated.";
     return *loaned_ptr_;
   }
   T* operator->() const {
-    ASSERT_NE(lender_ref_, nullptr);
-    return loaned_ptr_; 
+    CHECK_NE(loaned_ptr_, reinterpret_cast<T*>(nullptr))
+        << "Loaned ptr invalidated.";
+    return loaned_ptr_;
   }
   T* get() const { return loaned_ptr_; }
 
@@ -64,15 +66,17 @@ class Lender : public NonCopyable {
 
  protected:
   template <class T>
-  Lease<T> MakeLoan() const {
-    return Loan(&ref_, reinterpret_cast<T*>(this));
+  Loan<T> MakeLoan() {
+    return Loan<T>(&ref_, reinterpret_cast<T*>(this));
   }
 
-  void TerminateLoans() const { ASSERT_EQ(ref_.load(), 0); }
+  void TerminateLoans() const {
+    CHECK_EQ(ref_.load(), 0) << "Loans remained when terminating loans.";
+  }
+
  private:
   mutable std::atomic<int> ref_;
 };
 }  // namespace util
 
 #endif  // UTIL_LOAN_H_
-

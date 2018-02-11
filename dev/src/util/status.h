@@ -2,32 +2,24 @@
 #define UTIL_STATUS_H_
 
 #include <atomic>
-#include <string_view>
 
-#include "base/assert.h"
+#include "absl/strings/string_view.h"
 #include "base/static_type_assert.h"
+#include "glog/logging.h"
 #include "util/cannonical_errors.h"
 
 namespace util {
 
-// The state of some execution or return result. Status should be used as a
-// return type for methods that would usually throw exceptions.
-//
-// As Needed:
-// TODO(?): Add stack trace
-// TODO(?): Add error spaces
-// TODO(?): Add update method
 class Status final {
  public:
   // Default status object is an OK status.
   Status();
   // err_code must not be UNKNOWN and msg must not be "".
-  template <class StringT>
-  Status(error::CannonicalErrors err_code, StringT&& msg) {
-    type_assert::IsConvertibleTo<std::string, StringT>();
-    ASSERT_NE(err_code, error::UNKNOWN);
-    ASSERT_NE(msg, "");
-    handle_ = new Payload(err_code, std::forward<StringT>(msg));
+  template <class STRING_T>
+  Status(error::CannonicalErrors err_code, STRING_T&& msg) {
+    base::type_assert::AssertIsConvertibleTo<std::string, STRING_T>();
+    CHECK_NE(err_code, error::UNKNOWN) << "Error type must not be unknown.";
+    handle_ = new Payload(err_code, std::forward<STRING_T>(msg));
   }
 
   ~Status();
@@ -41,21 +33,24 @@ class Status final {
 
   bool ok() const;
   // An ok status returns ""
-  std::string_view message() const;
+  absl::string_view message() const;
   error::CannonicalErrors cannonical_error_code() const;
 
   std::string ToString() const;
 
   friend bool operator==(const Status& lhs, const Status& rhs);
   friend bool operator!=(const Status& lhs, const Status& rhs);
+
  private:
   struct Payload {
     // Create a new payload with an automatic reference count of 1.
-    template <class StringT>
-    Payload(error::CannonicalErrors err_code, StringT&& msg) : 
-        cannonical_error_code(err_code), message(std::forward<StringT>(msg)),
-        refs(1) {
-      type_assert::IsConvertibleTo<std::string, StringT>();
+    template <class STRING_T>
+    Payload(error::CannonicalErrors err_code, STRING_T&& msg)
+        : cannonical_error_code(err_code),
+          message(std::forward<STRING_T>(msg)),
+          refs(1) {
+      base::type_assert::AssertIsConvertibleTo<std::string, STRING_T>();
+      CHECK(!message.empty()) << "Message must not be empty.";
     }
     // The core type of error
     const error::CannonicalErrors cannonical_error_code;
@@ -81,66 +76,66 @@ extern const Status OkStatus;
 
 // Convenience methods for making statuses from cannonical errors.
 
-template <class StringT>
-Status FailedPreconditionError(StringT&& msg) {
-  type_assert::IsConvertibleTo<std::string, StringT>();
-  return Status(error::FAILED_PRECONDITION, std::forward<StringT>(msg));
+template <class STRING_T>
+Status FailedPreconditionError(STRING_T&& msg) {
+  base::type_assert::AssertIsConvertibleTo<std::string, STRING_T>();
+  return Status(error::FAILED_PRECONDITION, std::forward<STRING_T>(msg));
 }
 
-template <class StringT>
-Status InvalidArgumentError(StringT&& msg) {
-  type_assert::IsConvertibleTo<std::string, StringT>();
-  return Status(error::INVALID_ARGUMENT, std::forward<StringT>(msg));
+template <class STRING_T>
+Status InvalidArgumentError(STRING_T&& msg) {
+  base::type_assert::AssertIsConvertibleTo<std::string, STRING_T>();
+  return Status(error::INVALID_ARGUMENT, std::forward<STRING_T>(msg));
 }
 
-template <class StringT>
-Status TimeoutError(StringT&& msg) {
-  type_assert::IsConvertibleTo<std::string, StringT>();
-  return Status(error::TIMEOUT, std::forward<StringT>(msg));
+template <class STRING_T>
+Status TimeoutError(STRING_T&& msg) {
+  base::type_assert::AssertIsConvertibleTo<std::string, STRING_T>();
+  return Status(error::TIMEOUT, std::forward<STRING_T>(msg));
 }
 
-template <class StringT>
-Status OutOfMemoryError(StringT&& msg) {
-  type_assert::IsConvertibleTo<std::string, StringT>();
-  return Status(error::OUT_OF_MEMORY, std::forward<StringT>(msg));
+template <class STRING_T>
+Status OutOfMemoryError(STRING_T&& msg) {
+  base::type_assert::AssertIsConvertibleTo<std::string, STRING_T>();
+  return Status(error::OUT_OF_MEMORY, std::forward<STRING_T>(msg));
 }
 
-template <class StringT>
-Status OutOfBoundsError(StringT&& msg) {
-  type_assert::IsConvertibleTo<std::string, StringT>();
-  return Status(error::OUT_OF_BOUNDS, std::forward<StringT>(msg));
+template <class STRING_T>
+Status OutOfBoundsError(STRING_T&& msg) {
+  base::type_assert::AssertIsConvertibleTo<std::string, STRING_T>();
+  return Status(error::OUT_OF_BOUNDS, std::forward<STRING_T>(msg));
 }
 
-template <class StringT>
-Status LogicError(StringT&& msg) {
-  type_assert::IsConvertibleTo<std::string, StringT>();
-  return Status(error::LOGIC_ERROR, std::forward<StringT>(msg));
+template <class STRING_T>
+Status LogicError(STRING_T&& msg) {
+  base::type_assert::AssertIsConvertibleTo<std::string, STRING_T>();
+  return Status(error::LOGIC_ERROR, std::forward<STRING_T>(msg));
 }
 
-template <class StringT>
-Status ResourceUnobtainable(StringT&& msg) {
-  type_assert::IsConvertibleTo<std::string, StringT>();
-  return Status(error::RESOURCE_UNOBTAINABLE, std::forward<StringT>(msg));
+template <class STRING_T>
+Status ResourceUnobtainable(STRING_T&& msg) {
+  base::type_assert::AssertIsConvertibleTo<std::string, STRING_T>();
+  return Status(error::RESOURCE_UNOBTAINABLE, std::forward<STRING_T>(msg));
 }
 
-template <class StringT>
-Status UnimplementedError(StringT&& msg) {
-  type_assert::IsConvertibleTo<std::string, StringT>();
-  return Status(error::UNIMPLEMENTED_ERROR, std::forward<StringT>(msg));
+template <class STRING_T>
+Status UnimplementedError(STRING_T&& msg) {
+  base::type_assert::AssertIsConvertibleTo<std::string, STRING_T>();
+  return Status(error::UNIMPLEMENTED_ERROR, std::forward<STRING_T>(msg));
 }
 
-template <class StringT>
-Status FormatMismatchError(StringT&& msg) {
-  type_assert::IsConvertibleTo<std::string, StringT>();
-  return Status(error::FORMAT_MISTMATCH, std::forward<StringT>(msg));
+template <class STRING_T>
+Status FormatMismatchError(STRING_T&& msg) {
+  base::type_assert::AssertIsConvertibleTo<std::string, STRING_T>();
+  return Status(error::FORMAT_MISTMATCH, std::forward<STRING_T>(msg));
 }
 
-template <class StringT>
-Status IOError(StringT&& msg) {
-  type_assert::IsConvertibleTo<std::string, StringT>();
-  return Status(error::IO_ERROR, std::forward<StringT>(msg));
+template <class STRING_T>
+Status IOError(STRING_T&& msg) {
+  base::type_assert::AssertIsConvertibleTo<std::string, STRING_T>();
+  return Status(error::IO_ERROR, std::forward<STRING_T>(msg));
 }
 
-} // namespace util
+}  // namespace util
 
-#endif // UTIL_STATUS_H_
+#endif  // UTIL_STATUS_H_

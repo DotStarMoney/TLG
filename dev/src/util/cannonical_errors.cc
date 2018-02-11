@@ -6,19 +6,13 @@ namespace util {
 namespace error {
 
 // NOTE: MUST be kept in sync with enum in cannonical_errors.h
-const std::string_view CannonicalErrorString[] = {
-  "Unknown",
-  "Failed precondition",
-  "Invalid argument",
-  "Timeout",
-  "Out of memory",
-  "Out of bounds",
-  "Logic error",
-  "Resource unobtainable",
-  "Unimplemented",
-  "Format mismatch",
-  "IO error"
-};
+const absl::string_view CannonicalErrorString[] = {
+    "Unknown",          "Failed precondition",
+    "Invalid argument", "Timeout",
+    "Out of memory",    "Out of bounds",
+    "Logic error",      "Resource unobtainable",
+    "Unimplemented",    "Format mismatch",
+    "IO error"};
 
-} // namespace error
-} // namespace util
+}  // namespace error
+}  // namespace util

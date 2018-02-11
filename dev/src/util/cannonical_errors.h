@@ -1,15 +1,15 @@
 #ifndef UTIL_CANNONICAL_ERRORS_H_
 #define UTIL_CANNONICAL_ERRORS_H_
 
-#include <string_view>
+#include "absl/strings/string_view.h"
 
 namespace util {
 namespace error {
 
 // The convention is that all error codes are of type int.
 enum CannonicalErrors : int {
-  // This indicates a failure of error handling code and should not be used 
-  // explicitly. 
+  // This indicates a failure of error handling code and should not be used
+  // explicitly.
   UNKNOWN = 0,
   // Something needed to be true before a function was called, and it was not.
   FAILED_PRECONDITION = 1,
@@ -36,9 +36,9 @@ enum CannonicalErrors : int {
 };
 
 // The cannonical errors but as strings
-extern const std::string_view CannonicalErrorString[];
+extern const absl::string_view CannonicalErrorString[];
 
-} // namespace error
-} // namespace util
+}  // namespace error
+}  // namespace util
 
-#endif // UTIL_CANNONICAL_ERRORS_H_
+#endif  // UTIL_CANNONICAL_ERRORS_H_
