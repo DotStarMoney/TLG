@@ -17,8 +17,8 @@ target_link_libraries(thread_thread_pool
 add_executable(thread_thread_pool_test
 	thread_pool_test.cc)
 target_link_libraries(thread_thread_pool_test
-	thread_thread_pool
 	absl::synchronization
+	thread_thread_pool
 	gmock
 	gtest_main)
 add_test(thread_thread_pool thread_thread_pool_test)

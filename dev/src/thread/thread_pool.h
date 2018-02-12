@@ -29,13 +29,17 @@ class ThreadPool : public util::NonCopyable {
   // Wait for all running threads in this pool to complete.
   void Join();
 
+  int pending_count() const {
+    return pending_count_.load();
+  }
+
  private:
   ThreadPool(util::Loan<ThreadReservoir>&& reservoir);
 
   std::mutex m_;
   std::condition_variable cv_;
   util::Loan<ThreadReservoir> reservoir_;
-  std::atomic<int> active_count_;
+  std::atomic<int> pending_count_;
 };
 }  // namespace thread
 
