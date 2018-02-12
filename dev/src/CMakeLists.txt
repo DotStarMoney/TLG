@@ -7,7 +7,7 @@ set(LOCAL ${CMAKE_CURRENT_LIST_DIR})
 add_subdirectory(${LOCAL}/base)
 #add_subdirectory(${LOCAL}/external)
 #add_subdirectory(${LOCAL}/storage)
-#add_subdirectory(${LOCAL}/thread)
+add_subdirectory(${LOCAL}/thread)
 add_subdirectory(${LOCAL}/util)
 
 # -------------------------------- BUILD TARGETS -------------------------------

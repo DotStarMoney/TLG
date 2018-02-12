@@ -131,6 +131,7 @@ target_include_directories(util_status_macros INTERFACE
 add_executable(util_status_macros_test
 	status_macros_test.cc)
 target_link_libraries(util_status_macros_test
+	util_status_macros
 	util_status
 	util_statusor
 	gtest
@@ -163,7 +164,6 @@ target_sources(util_stopwatch INTERFACE
 	${CMAKE_CURRENT_LIST_DIR}/stopwatch.h)
 target_include_directories(util_stopwatch INTERFACE
 	${CMAKE_CURRENT_LIST_DIR})
-
 # ----------------------------------- FOLDER -----------------------------------
 set_target_properties(
 	util_bits

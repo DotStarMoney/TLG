@@ -15,16 +15,16 @@ namespace util {
 template <class T>
 class StatusOr final : public util::NonCopyable {
   static_assert(!std::is_same<T, Status>::value,
-                "Cannot construct a StatusOr with type Status.");
+                "Cannot create a StatusOr with type Status.");
 
  public:
   template <class ForwardT>
   StatusOr(ForwardT&& x) : statusor_(std::forward<ForwardT>(x)) {
     static_assert(
         std::is_convertible<ForwardT, T>::value ||
-            std::is_same<ForwardT, Status>::value,
+            std::is_convertible<ForwardT, Status>::value,
         "This StatusOr cannot be constructed from the provided type.");
-    if constexpr (std::is_same<ForwardT, Status>::value) {
+    if constexpr (std::is_convertible<ForwardT, Status>::value) {
       CHECK(!std::get<Status>(statusor_).ok())
           << "Cannot construct a StatusOr from an Ok Status.";
     }
@@ -49,7 +49,7 @@ class StatusOr final : public util::NonCopyable {
   // calling this method twice is undefined.
   T&& ConsumeValue() { return std::move(std::get<T>(statusor_)); }
 
-  Status status() const {
+  const Status& status() const {
     if (statusor_.index() == 0) {
       return std::get<Status>(statusor_);
     }

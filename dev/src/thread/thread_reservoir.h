@@ -9,13 +9,13 @@
 #include <thread>
 #include <vector>
 
+#include "thread/thread_pool.h"
 #include "util/loan.h"
 
 namespace thread {
 
-// A reservoir of threads, accessible by ThreadPool.
+// A reservoir of threads made accessible by ThreadPool.
 //
-class ThreadPool;
 class ThreadReservoir : public util::Lender {
   friend class ThreadPool;
 
@@ -26,7 +26,7 @@ class ThreadReservoir : public util::Lender {
 
   // Not thread safe.
   void Start();
-  
+
   // Resize the number of threads in the pool. If reducing the pool size, this
   // method should be run when you know all running threads in this reservoir
   // are sleeping or will be soon. It will block until some arbitrary subset of
@@ -37,11 +37,7 @@ class ThreadReservoir : public util::Lender {
   void Resize(int size);
 
   // Make a thread pool that references this reservoir.
-  std::unique_ptr<ThreadPool> GetPool() const;
-
-  // ThreadReservoir is neither copyable nor assignable.
-  ThreadReservoir(const ThreadReservoir&) = delete;
-  ThreadReservoir& operator=(const ThreadReservoir&) = delete;
+  std::unique_ptr<ThreadPool> GetPool();
 
  private:
   static void Dispatcher(ThreadReservoir* reservoir, int64_t id);
@@ -53,12 +49,11 @@ class ThreadReservoir : public util::Lender {
 
   std::mutex m_;
   std::condition_variable cv_;
-  std::queue<std::function<void()>> task_queue_; // Guarded by m_
+  std::queue<std::function<void()>> task_queue_;  // Guarded by m_
   std::vector<std::thread> threads_;
-  bool terminate_; // Guarded by m_
-  int target_size_;
+  bool terminate_;   // Guarded by m_
+  int target_size_;  // Part of non-thread safe api, so no need to guard
 };
 }  // namespace thread
 
 #endif  // THREAD_THREAD_RESERVOIR_H_
-

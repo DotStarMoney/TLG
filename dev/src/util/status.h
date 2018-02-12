@@ -35,6 +35,7 @@ class Status final {
   // An ok status returns ""
   absl::string_view message() const;
   error::CannonicalErrors cannonical_error_code() const;
+  Status& status() { return *this; }
 
   std::string ToString() const;
 

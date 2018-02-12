@@ -1,13 +1,14 @@
 #include "thread/thread_pool.h"
 
-#include "base/assert.h"
+#include "glog/logging.h"
 
-namespace util {
-ThreadPool::ThreadPool(Loan<ThreadReservoir>&& reservoir)
+namespace thread {
+ThreadPool::ThreadPool(util::Loan<ThreadReservoir>&& reservoir)
     : reservoir_(std::move(reservoir)), active_count_(0) {}
 
-ThreadPool::~ThreadPool() { 
-  ASSERT_EQ(active_count_.load(), 0);
+ThreadPool::~ThreadPool() {
+  CHECK_EQ(active_count_.load(), 0)
+      << "Attempting to destruct a thread pool with active threads.";
 }
 
 void ThreadPool::Join() {
@@ -25,4 +26,4 @@ void ThreadPool::Schedule(std::function<void()> func) {
     cv_.notify_all();
   });
 }
-}  // namespace util
+}  // namespace thread

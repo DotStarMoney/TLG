@@ -1,11 +1,12 @@
 #include "thread/thread_reservoir.h"
 
-#include "base/assert.h"
+#include "glog/logging.h"
 
-namespace util {
+namespace thread {
 ThreadReservoir::ThreadReservoir(int size)
     : terminate_(false), target_size_(size) {
-  ASSERT_GT(size, 0);
+  CHECK_GT(size, 0)
+      << "Must construct thread reservoir with at least 1 worker.";
 }
 
 ThreadReservoir::~ThreadReservoir() {
@@ -25,32 +26,39 @@ ThreadReservoir::~ThreadReservoir() {
 }
 
 void ThreadReservoir::Start() {
-  ASSERT_EQ(threads_.size(), 0);
+  CHECK_EQ(threads_.size(), 0) << "Start was already called.";
   while (threads_.size() < target_size_) {
     threads_.emplace_back(Dispatcher, this, threads_.size());
   }
 }
 
-std::unique_ptr<ThreadPool> ThreadReservoir::GetPool() const {
+std::unique_ptr<ThreadPool> ThreadReservoir::GetPool() {
   // Make a fresh thread pool with a loaned reference to us.
-  return std::make_unique<ThreadPool>(MakeLoan<ThreadReservoir>());
+  return std::unique_ptr<ThreadPool>(
+      new ThreadPool(MakeLoan<ThreadReservoir>()));
 }
 
 void ThreadReservoir::Resize(int size) {
-  ASSERT_GT(size, 0);
+  CHECK_GT(size, 0) << "Cannot resize a reservoir to less than 1 worker.";
   if (size > target_size_) {
     // We can blindly just add new threads since they aren't yet doing
-    // anything.
+    // anything and increasing the value of target_size_ won't effect the
+    // outcome of worker termination checks (assuming Resize is externally
+    // synchronized).
     while (target_size_++ < size) {
       threads_.emplace_back(Dispatcher, this, threads_.size());
     }
-  } else {
+  } else if (size < target_size_) {
     // Tell threads whose id is above the new size cutoff to terminate.
-    target_size_ = size;
+    int threads_to_terminate = target_size_ - size;
+    {
+      std::unique_lock<std::mutex> lock(m_);
+      target_size_ = size;
+    }
     cv_.notify_all();
-    while (target_size_-- < size) {
+    while (--threads_to_terminate >= 0) {
       // For each thread we want to be rid of, wait for it to finish, then
-      // kill it.
+      // remove it from the reservoir.
       threads_.back().join();
       threads_.pop_back();
     }
@@ -92,5 +100,4 @@ void ThreadReservoir::Dispatcher(ThreadReservoir* reservoir, int64_t id) {
     task();
   }
 }
-}  // namespace util
-
+}  // namespace thread
