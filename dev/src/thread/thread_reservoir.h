@@ -39,6 +39,9 @@ class ThreadReservoir : public util::Lender {
   // Make a thread pool that references this reservoir.
   std::unique_ptr<ThreadPool> GetPool();
 
+  // Not thread safe.
+  int size() const { return static_cast<int>(threads_.size()); }
+
  private:
   static void Dispatcher(ThreadReservoir* reservoir, int64_t id);
 

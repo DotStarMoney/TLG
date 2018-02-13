@@ -76,7 +76,7 @@ void ThreadReservoir::Schedule(std::function<void()> func) {
 bool ThreadReservoir::TerminateThreadCriteria(int64_t id) const {
   // Should terminate if either the terminate_ flag is set, or our id is no
   // longer wanted in the thread pool as a result of a call to Resize.
-  return terminate_ || (id > target_size_);
+  return terminate_ || (id > (target_size_ - 1));
 }
 
 void ThreadReservoir::Dispatcher(ThreadReservoir* reservoir, int64_t id) {

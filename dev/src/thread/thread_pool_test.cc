@@ -15,10 +15,11 @@ void MeetDeadlineOrDie(F f, int32_t msecs) {
   auto async_future = std::async(std::launch::async, f);
   if (async_future.wait_for(std::chrono::milliseconds(msecs)) ==
       std::future_status::timeout) {
-    CHECK(false) << "Aborting: threads stuck.";
+    CHECK(false) << "Aborting: threads probably stuck.";
   }
 }
 
+// We stick a deadline on some of these tests due to paranoia about deadlock.
 constexpr int DEFAULT_DEADLINE_MSECS = 3000;
 
 TEST(ThreadPoolTest, Basic) {
@@ -50,10 +51,10 @@ TEST(ThreadPoolTest, ThreadsAreNotSerialized) {
         thread::ThreadReservoir reservoir(2);
         reservoir.Start();
 
-        absl::Barrier* barrier = new absl::Barrier(3);
+        auto barrier = new absl::Barrier(3);
 
         auto pool = reservoir.GetPool();
-        auto test_func = [&barrier]() {
+        auto test_func = [barrier]() {
           if (barrier->Block()) delete barrier;
         };
         pool->Schedule(test_func);
@@ -72,10 +73,10 @@ TEST(ThreadPoolTest, ResizeUpReservoir) {
         thread::ThreadReservoir res(4);
         res.Start();
 
-        int acc1 = 0;
-        int acc2 = 0;
-        absl::Barrier* started_barrier = new absl::Barrier(5);
-        absl::Barrier* barrier = new absl::Barrier(5);
+        std::atomic<int> acc1 = 0;
+        std::atomic<int> acc2 = 0;
+        auto started_barrier = new absl::Barrier(5);
+        auto barrier = new absl::Barrier(5);
 
         auto blocking_func = [&acc1, started_barrier, barrier]() {
           if (started_barrier->Block()) delete started_barrier;
@@ -100,10 +101,10 @@ TEST(ThreadPoolTest, ResizeUpReservoir) {
         res.Resize(5);
 
         if (completed_barrier->Block()) delete completed_barrier;
-        EXPECT_EQ(acc2, 1);
+        EXPECT_EQ(acc2.load(), 1);
 
         if (barrier->Block()) delete barrier;
-        EXPECT_EQ(acc1, 4);
+        EXPECT_EQ(acc1.load(), 4);
 
         pool->Join();
       },
@@ -113,13 +114,90 @@ TEST(ThreadPoolTest, ResizeUpReservoir) {
 TEST(ThreadPoolTest, ResizeDownReservoir) {
   MeetDeadlineOrDie(
       []() {
-        thread::ThreadReservoir res(4);
+        thread::ThreadReservoir res(2);
         res.Start();
 
+        auto barrier = new absl::Barrier(3);
+        auto pool = res.GetPool();
+        auto test_func = [barrier]() {
+          if (barrier->Block()) delete barrier;
+          // Using a delay isn't the greatest test writing here, but we don't
+          // have another option.
+          std::this_thread::sleep_for(std::chrono::seconds(1));
+        };
+        // Everyone should take their time getting to the join that will be
+        // called in Resize.
+        pool->Schedule(test_func);
+        pool->Schedule(test_func);
+        if (barrier->Block()) delete barrier;
+        // Will block until the thread we need to join on completes.
+        res.Resize(1);
+        pool->Join();
+      },
+      DEFAULT_DEADLINE_MSECS + 1000);
+}
 
+TEST(ThreadPoolTest, MultiplePools) {
+  MeetDeadlineOrDie(
+      []() {
+        thread::ThreadReservoir res(2);
 
+        auto pool1 = res.GetPool();
+        auto pool2 = res.GetPool();
+
+        std::atomic<int> acc(0);
+        auto add_func = [&acc]() { ++acc; };
+
+        pool1->Schedule(add_func);
+        pool2->Schedule(add_func);
+        pool1->Schedule(add_func);
+        pool2->Schedule(add_func);
+        pool2->Schedule(add_func);
+
+        res.Start();
+
+        EXPECT_EQ(acc.load(), 5);
       },
       DEFAULT_DEADLINE_MSECS);
 }
 
-// check failures, multiple pools, loan failures
+TEST(ThreadPoolTest, BadResSize) {
+  EXPECT_DEATH({ thread::ThreadReservoir res(0); }, ".*at least 1.*");
+  EXPECT_DEATH(
+      {
+        thread::ThreadReservoir res(4);
+        res.Resize(-1);
+      },
+      ".*less than 1.*");
+}
+
+TEST(ThreadPoolTest, StartMoreThanOnce) {
+  EXPECT_DEATH(
+      {
+        thread::ThreadReservoir res(4);
+        res.Start();
+        res.Start();
+      },
+      ".*already called.*");
+}
+
+TEST(ThreadPoolTest, OutstandingRefToPool) {
+  EXPECT_DEATH(
+      {
+        auto res = std::make_unique<thread::ThreadReservoir>(4);
+        auto pool = res->GetPool();
+        res.reset(nullptr);
+      },
+      "Loans remained.*");
+}
+
+TEST(ThreadPoolTest, DestructingPoolWithoutJoin) {
+  EXPECT_DEATH(
+      {
+        thread::ThreadReservoir res(4);
+        auto pool = res.GetPool();
+        pool->Schedule(
+            []() { std::this_thread::sleep_for(std::chrono::seconds(1)); });
+      },
+      ".*with active threads.*");
+}
