@@ -20,13 +20,24 @@ class BlockGrid {
   };
 
   void PutBlock(glm::ivec2 p, BlockType block);
-  BlockType GetBlock(glm::ivec2 p);
+  BlockType GetBlock(glm::ivec2 p) const;
 
+  struct ClipResult {
+    // Clipped movement vector
+    glm::dvec2 v;
+    enum Axis { NO_COLLISION, X_ALIGNED, Y_ALIGNED };
+    Axis axis;
+  };
   // Collides a rectangle at position p of size s moving over delta v, with the
   // block grid positioned s.t. the upper left corner is at 0,0. Returns the
   // clipped v. If the rectangle and grid are interpenetrating, the result is
   // undefined.
-  glm::dvec2 ClipMovingRect(glm::dvec2 p, glm::dvec2 s, glm::dvec2 v);
+  //
+  // favor_y_axis controls behavior when a collision happens directly on a
+  // corner. If true, the returned clip result will return Y_ALIGNED when this
+  // happens, X_ALIGNED otherwise
+  ClipResult ClipMovingRect(glm::dvec2 p, glm::dvec2 s, glm::dvec2 v,
+                            bool favor_y_axis = true) const;
 
  private:
   std::vector<BlockType> blocks_;

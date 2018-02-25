@@ -10,6 +10,7 @@
 #endif
 #include "absl/synchronization/barrier.h"
 
+namespace {
 template <typename F>
 void MeetDeadlineOrDie(F f, int32_t msecs) {
   auto async_future = std::async(std::launch::async, f);
@@ -18,6 +19,7 @@ void MeetDeadlineOrDie(F f, int32_t msecs) {
     CHECK(false) << "Aborting: threads probably stuck.";
   }
 }
+}  // namespace
 
 // We stick a deadline on some of these tests due to paranoia about deadlock.
 constexpr int DEFAULT_DEADLINE_MSECS = 3000;

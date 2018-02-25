@@ -15,7 +15,7 @@ void BlockGrid::PutBlock(ivec2 p, BlockType block) {
   blocks_[p.y * dims_.x + p.x] = block;
 }
 
-BlockGrid::BlockType BlockGrid::GetBlock(ivec2 p) {
+BlockGrid::BlockType BlockGrid::GetBlock(ivec2 p) const {
   return blocks_[p.y * dims_.x + p.x];
 }
 
@@ -27,7 +27,6 @@ namespace {
 // in range will preceed the first in the sign of v.
 bool GetCollidingGridRange(double p, double p_extent, double v, int max,
                            int range[2]) {
-  int range[2];
   if (v >= 0) {
     range[0] = static_cast<int>(std::ceil(p_extent));
     range[1] = static_cast<int>(std::ceil(p_extent + v)) - 1;
@@ -36,7 +35,7 @@ bool GetCollidingGridRange(double p, double p_extent, double v, int max,
     if (range[1] >= max) range[1] = max - 1;
   } else {
     range[0] = static_cast<int>(std::floor(p)) - 1;
-    range[1] = static_cast<int>(std::floor(p - v));
+    range[1] = static_cast<int>(std::floor(p + v));
     if ((range[0] < 0) || (range[1] >= max)) return false;
     if (range[0] >= max) range[0] = max - 1;
     if (range[1] < 0) range[1] = 0;
@@ -45,16 +44,19 @@ bool GetCollidingGridRange(double p, double p_extent, double v, int max,
 }
 }  // namespace
 
-dvec2 BlockGrid::ClipMovingRect(dvec2 p, dvec2 s, dvec2 v) {
+BlockGrid::ClipResult BlockGrid::ClipMovingRect(dvec2 p, dvec2 s, dvec2 v,
+                                                bool favor_y_axis) const {
+  if (v == dvec2(0, 0)) return {v, ClipResult::NO_COLLISION};
+
   const dvec2 rect_extent = p + s;
 
   int x_range[2];
   if (!GetCollidingGridRange(p.x, rect_extent.x, v.x, dims_.x, x_range)) {
-    return v;
+    return {v, ClipResult::NO_COLLISION};
   }
   int y_range[2];
   if (!GetCollidingGridRange(p.y, rect_extent.y, v.y, dims_.y, y_range)) {
-    return v;
+    return {v, ClipResult::NO_COLLISION};
   }
 
   int x_index = x_range[0];
@@ -101,10 +103,25 @@ dvec2 BlockGrid::ClipMovingRect(dvec2 p, dvec2 s, dvec2 v) {
     const double x_line_p = x_line * l_;
     const double y_line_p = y_line * l_;
 
-    const double rel_mag_x = (x_line_p - x_rect_front) / v.x;
-    const double rel_mag_y = (y_line_p - y_rect_front) / v.y;
+    const double rel_mag_x = (v.x == 0 ? std::numeric_limits<double>::max()
+                                       : (x_line_p - x_rect_front) / v.x);
+    const double rel_mag_y = (v.y == 0 ? std::numeric_limits<double>::max()
+                                       : (y_line_p - y_rect_front) / v.y);
 
-    if (rel_mag_x <= rel_mag_y) {
+    // We have to check the veritable "corner case" where we sit precisely in
+    // the corner of a grid square that we're also moving in the direction of.
+    // If theres a block diagonal to the block we're currently intersecting (in
+    // the direction of the corner we're in), movement must stop.
+    if ((rel_mag_x == rel_mag_y) && (rel_mag_x == 0)) {
+      const BlockType block = GetBlock({x_index, y_index});
+      if ((block == BlockType::FULL) ||
+          ((block == BlockType::ONE_WAY_UP) && (v.y > 0))) {
+        return {{x_rect_front - o_x_rect_front, y_rect_front - o_y_rect_front},
+                favor_y_axis ? ClipResult::Y_ALIGNED : ClipResult::X_ALIGNED};
+      }
+    }
+
+    if ((rel_mag_x < rel_mag_y) || ((rel_mag_x == rel_mag_y) && favor_y_axis)) {
       const double y_shift = rel_mag_x * v.y;
 
       x_rect_front = x_line_p;
@@ -120,8 +137,9 @@ dvec2 BlockGrid::ClipMovingRect(dvec2 p, dvec2 s, dvec2 v) {
         if (GetBlock({x_index, y}) == BlockType::FULL) {
           // Return the difference between the moved rect fronts and the
           // originals
-          return dvec2(x_rect_front - o_x_rect_front,
-                       y_rect_front - o_y_rect_front);
+          return {
+              {x_rect_front - o_x_rect_front, y_rect_front - o_y_rect_front},
+              ClipResult::Y_ALIGNED};
         }
       }
 
@@ -129,7 +147,8 @@ dvec2 BlockGrid::ClipMovingRect(dvec2 p, dvec2 s, dvec2 v) {
       x_index += x_inc;
 
       // If we "exceed" the range of block column indexes we can check...
-      if (((x_range[1] - x_index) * x_inc) < 0) return v;
+      if (((x_range[1] - x_index) * x_inc) < 0)
+        return {v, ClipResult::NO_COLLISION};
     } else {
       const double x_shift = rel_mag_y * v.x;
 
@@ -148,8 +167,9 @@ dvec2 BlockGrid::ClipMovingRect(dvec2 p, dvec2 s, dvec2 v) {
         if ((block == BlockType::FULL) ||
             ((block == BlockType::ONE_WAY_UP) && (v.y > 0))) {
           // See above comment...
-          return dvec2(x_rect_front - o_x_rect_front,
-                       y_rect_front - o_y_rect_front);
+          return {
+              {x_rect_front - o_x_rect_front, y_rect_front - o_y_rect_front},
+              ClipResult::X_ALIGNED};
         }
       }
 
@@ -157,7 +177,8 @@ dvec2 BlockGrid::ClipMovingRect(dvec2 p, dvec2 s, dvec2 v) {
       y_index += y_inc;
 
       // If we "exceed" the range of block row indexes we can check...
-      if (((y_range[1] - y_index) * y_inc) < 0) return v;
+      if (((y_range[1] - y_index) * y_inc) < 0)
+        return {v, ClipResult::NO_COLLISION};
     }
   }
 }
