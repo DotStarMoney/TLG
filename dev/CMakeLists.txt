@@ -48,6 +48,8 @@ set(SDL_SHARED OFF CACHE BOOL "")
 add_subdirectory_with_folder("SDL" ${EX_PROJ_SOURCE_DIR}/SDL_EX)
 include_directories(${EX_PROJ_SOURCE_DIR}/SDL_EX/include)
 
+add_subdirectory_with_folder("glm" ${EX_PROJ_SOURCE_DIR}/GLM_EX)
+
 enable_testing()
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 include_directories(${TLG_SOURCE_DIR})

@@ -9,6 +9,8 @@ add_subdirectory(${LOCAL}/base)
 #add_subdirectory(${LOCAL}/storage)
 add_subdirectory(${LOCAL}/thread)
 add_subdirectory(${LOCAL}/util)
+add_subdirectory(${LOCAL}/physics)
+
 
 # -------------------------------- BUILD TARGETS -------------------------------
 
