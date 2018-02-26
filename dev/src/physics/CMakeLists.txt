@@ -7,6 +7,7 @@ add_library(physics_retro
 	retro.cc
 	retro.h)
 target_link_libraries(physics_retro
+	glog
 	glm)
 #_______________________________________________________________________________
 #physics::retro test

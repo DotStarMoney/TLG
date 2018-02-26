@@ -1,6 +1,9 @@
 #include "physics/retro.h"
 
 #include <math.h>
+#include <algorithm>
+
+#include "glog/logging.h"
 
 using glm::dvec2;
 using glm::ivec2;
@@ -9,7 +12,11 @@ namespace physics {
 namespace retro {
 
 BlockGrid::BlockGrid(ivec2 dims, double l)
-    : blocks_(dims.x * dims.y, BlockType::NONE), l_(l), dims_(dims) {}
+    : blocks_(dims.x * dims.y, BlockType::NONE), l_(l), dims_(dims) {
+  CHECK_GE(dims.x, 1);
+  CHECK_GE(dims.y, 1);
+  CHECK_GT(l, 0);
+}
 
 void BlockGrid::PutBlock(ivec2 p, BlockType block) {
   blocks_[p.y * dims_.x + p.x] = block;
@@ -51,11 +58,13 @@ BlockGrid::ClipResult BlockGrid::ClipMovingRect(dvec2 p, dvec2 s, dvec2 v,
   const dvec2 rect_extent = p + s;
 
   int x_range[2];
-  if (!GetCollidingGridRange(p.x, rect_extent.x, v.x, dims_.x, x_range)) {
-    return {v, ClipResult::NO_COLLISION};
-  }
   int y_range[2];
-  if (!GetCollidingGridRange(p.y, rect_extent.y, v.y, dims_.y, y_range)) {
+  const bool x_in_bound =
+      GetCollidingGridRange(p.x, rect_extent.x, v.x, dims_.x, x_range);
+  const bool y_in_bound =
+      GetCollidingGridRange(p.y, rect_extent.y, v.y, dims_.y, y_range);
+  if (!x_in_bound && !y_in_bound) {
+    // Rect will always be completely out of bounds
     return {v, ClipResult::NO_COLLISION};
   }
 
@@ -66,10 +75,17 @@ BlockGrid::ClipResult BlockGrid::ClipMovingRect(dvec2 p, dvec2 s, dvec2 v,
   int x_inc = v.x >= 0 ? 1 : -1;
   int y_inc = v.y >= 0 ? 1 : -1;
 
+  // It's possible we never even touch another grid cell, and can early-out here
+  // if this is the case.
+  if ((((x_range[1] - x_index) * x_inc) < 0) &&
+      (((y_range[1] - y_index) * y_inc) < 0)) {
+    return {v, ClipResult::NO_COLLISION};
+  }
+
   // The vertical/horizontal components of the lines along the colliding
   // boundary of the rectangle
-  double x_rect_front = p.x + (v.x <= 0 ? 0 : s.x);
-  double y_rect_front = p.y + (v.y <= 0 ? 0 : s.y);
+  double x_rect_front = p.x + (v.x >= 0 ? s.x : 0);
+  double y_rect_front = p.y + (v.y >= 0 ? s.y : 0);
 
   const double o_x_rect_front = x_rect_front;
   const double o_y_rect_front = y_rect_front;
@@ -108,15 +124,15 @@ BlockGrid::ClipResult BlockGrid::ClipMovingRect(dvec2 p, dvec2 s, dvec2 v,
     const double rel_mag_y = (v.y == 0 ? std::numeric_limits<double>::max()
                                        : (y_line_p - y_rect_front) / v.y);
 
-    // We have to check the veritable "corner case" where we sit precisely in
+    // We have to check the veritable "corner case" where we'll sit precisely in
     // the corner of a grid square that we're also moving in the direction of.
     // If theres a block diagonal to the block we're currently intersecting (in
     // the direction of the corner we're in), movement must stop.
-    if ((rel_mag_x == rel_mag_y) && (rel_mag_x == 0)) {
+    if (rel_mag_x == rel_mag_y) {
       const BlockType block = GetBlock({x_index, y_index});
       if ((block == BlockType::FULL) ||
           ((block == BlockType::ONE_WAY_UP) && (v.y > 0))) {
-        return {{x_rect_front - o_x_rect_front, y_rect_front - o_y_rect_front},
+        return {{x_line_p - o_x_rect_front, y_line_p - o_y_rect_front},
                 favor_y_axis ? ClipResult::Y_ALIGNED : ClipResult::X_ALIGNED};
       }
     }
@@ -128,9 +144,11 @@ BlockGrid::ClipResult BlockGrid::ClipMovingRect(dvec2 p, dvec2 s, dvec2 v,
       y_rect_front += y_shift;
 
       int y_front[2];
-      y_front[0] = static_cast<int>(std::floor(y_rect_front + x_front_b_y[0]));
-      y_front[1] =
-          static_cast<int>(std::ceil(y_rect_front + x_front_b_y[1])) - 1;
+      y_front[0] = std::max(
+          static_cast<int>(std::floor(y_rect_front + x_front_b_y[0])), 0);
+      y_front[1] = std::min(
+          static_cast<int>(std::ceil(y_rect_front + x_front_b_y[1])) - 1,
+          dims_.y - 1);
 
       for (int y = y_front[0]; y <= y_front[1]; ++y) {
         // The rect's vertical edge can only collide with "FULL" blocks
@@ -156,9 +174,11 @@ BlockGrid::ClipResult BlockGrid::ClipMovingRect(dvec2 p, dvec2 s, dvec2 v,
       y_rect_front = y_line_p;
 
       int x_front[2];
-      x_front[0] = static_cast<int>(std::floor(x_rect_front + y_front_b_x[0]));
-      x_front[1] =
-          static_cast<int>(std::ceil(x_rect_front + y_front_b_x[1])) - 1;
+      x_front[0] = std::max(
+          static_cast<int>(std::floor(x_rect_front + y_front_b_x[0])), 0);
+      x_front[1] = std::min(
+          static_cast<int>(std::ceil(x_rect_front + y_front_b_x[1])) - 1,
+          dims_.x - 1);
 
       for (int x = x_front[0]; x <= x_front[1]; ++x) {
         const BlockType block = GetBlock({x, y_index});
