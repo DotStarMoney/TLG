@@ -50,6 +50,12 @@ include_directories(${EX_PROJ_SOURCE_DIR}/SDL_EX/include)
 
 add_subdirectory_with_folder("glm" ${EX_PROJ_SOURCE_DIR}/GLM_EX)
 
+add_library(stb_image INTERFACE)
+target_sources(stb_image INTERFACE
+	${EX_PROJ_SOURCE_DIR}/STB_EX/stb_image.h)
+target_include_directories(stb_image INTERFACE
+	${EX_PROJ_SOURCE_DIR}/STB_EX)
+
 enable_testing()
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 include_directories(${TLG_SOURCE_DIR})

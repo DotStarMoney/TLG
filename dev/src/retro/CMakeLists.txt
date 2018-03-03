@@ -2,6 +2,13 @@ cmake_minimum_required(VERSION 3.2)
 project(TLG)
 # -------------------------------- BUILD TARGETS -------------------------------
 #_______________________________________________________________________________
+#retro::fbcore
+add_library(retro_fbcore INTERFACE)
+target_sources(retro_fbcore INTERFACE
+	${CMAKE_CURRENT_LIST_DIR}/fbcore.h)
+target_include_directories(retro_fbcore INTERFACE
+	${CMAKE_CURRENT_LIST_DIR})
+#_______________________________________________________________________________
 #retro::fbgfx
 add_library(retro_fbgfx
 	fbgfx.cc
@@ -15,6 +22,10 @@ add_library(retro_fbimg
 	fbimg.cc
 	fbimg.h)
 target_link_libraries(retro_fbimg
+	util_deleterptr
+	SDL2-static
+	stb_image
+	retro_fbcore
 	glog
 	glm)
 # ----------------------------------- FOLDER -----------------------------------

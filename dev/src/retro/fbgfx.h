@@ -6,6 +6,8 @@
 
 namespace retro {
 
+
+
 class FbGfx final {
  public:
   static std::unique_ptr<FbGfx> CreateScreen(glm::ivec2 dimensions);
@@ -13,8 +15,9 @@ class FbGfx final {
   // suite of draw functions, will also need some rudamentary SDL image wrapper.
 
   void WaitForVSync() const;
-  
+
   void Flip();
+
  private:
   FbGfx(glm::ivec2 dimensions);
 };
