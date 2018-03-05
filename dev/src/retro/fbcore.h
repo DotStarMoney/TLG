@@ -17,6 +17,17 @@ struct FbColor32 {
   FbColor32& operator=(const int32_t& x) { this->value = x; }
   FbColor32(const int32_t& x) { this->value = x; }
   operator int32_t() const { return this->value; }
+  enum : uint32_t {
+    TRANSPARENT_BLACK = 0x00000000,
+    BLACK = 0x000000ff,
+    WHITE = 0xffffffff,
+    RED = 0xff0000ff,
+    GREEN = 0x00ff00ff,
+    BLUE = 0x0000ffff,
+    CYAN = 0x00ffffff,
+    MAGENTA = 0xff00ffff,
+    YELLOW = 0xffff00ff
+  };
 };
 
 }  // namespace retro

@@ -7,10 +7,10 @@ FbGfx::Cleanup FbGfx::cleanup_;
 deleter_ptr<SDL_Window> FbGfx::window_ = nullptr;
 deleter_ptr<SDL_Renderer> FbGfx::renderer_ = nullptr;
 
-bool FbGfx::IsInit() { return window_.get() != nullptr; }
+bool FbGfx::is_init() { return window_.get() != nullptr; }
 
 void FbGfx::InitGfx() {
-  CHECK(!IsInit()) << "Cannot initialize FbGfx more than once.";
+  CHECK(!is_init()) << "Cannot initialize FbGfx more than once.";
   sdl_util::Cleanup::RegisterModule();
   SDL_Init(SDL_INIT_VIDEO);
 

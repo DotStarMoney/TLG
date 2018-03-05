@@ -4,14 +4,9 @@
 #include <string>
 
 #include "SDL.h"
-#include "util/deleterptr.h"
 #include "glm/vec2.hpp"
 #include "retro/fbcore.h"
-
-// Rewrite so that textures loaded from a file are static, but ones created on
-// the fly can be render targets. Also create method for testing the render-ability
-// of an image.
-
+#include "util/deleterptr.h"
 
 namespace retro {
 
@@ -30,10 +25,11 @@ class FbImg {
 
   int width() const { return w_; }
   int height() const { return h_; }
+  bool is_render_target() const { return is_target_; }
 
  private:
   typedef unsigned char StbImageData;
-  FbImg(util::deleter_ptr<SDL_Texture> texture, int w, int h);
+  FbImg(util::deleter_ptr<SDL_Texture> texture, int w, int h, bool is_target);
 
   virtual ~FbImg() {}
 
@@ -43,6 +39,7 @@ class FbImg {
   const util::deleter_ptr<SDL_Texture> texture_;
   const int w_;
   const int h_;
+  const bool is_target_;
 };
 
 }  // namespace retro
