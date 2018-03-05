@@ -14,6 +14,12 @@ add_library(retro_fbgfx
 	fbgfx.cc
 	fbgfx.h)
 target_link_libraries(retro_fbgfx
+	sdl_util_cleanup
+	retro_fbimg
+	util_deleterptr
+	absl::strings
+	SDL2-static
+	retro_fbcore
 	glog
 	glm)
 #_______________________________________________________________________________
@@ -22,6 +28,7 @@ add_library(retro_fbimg
 	fbimg.cc
 	fbimg.h)
 target_link_libraries(retro_fbimg
+	retro_fbgfx
 	util_deleterptr
 	SDL2-static
 	stb_image

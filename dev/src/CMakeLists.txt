@@ -11,6 +11,7 @@ add_subdirectory(${LOCAL}/thread)
 add_subdirectory(${LOCAL}/util)
 add_subdirectory(${LOCAL}/physics)
 add_subdirectory(${LOCAL}/retro)
+add_subdirectory(${LOCAL}/sdl_util)
 
 
 
