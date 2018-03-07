@@ -24,9 +24,6 @@ unique_ptr<FbImg> FbImg::OfSize(ivec2 dimensions, FbColor32 fill_color) {
       [](SDL_Texture* t) { SDL_DestroyTexture(t); });
   CHECK_NE(texture.get(), nullptr)
       << "SDL error (SDL_CreateTexture): " << SDL_GetError();
-
-  CHECK_EQ(SDL_SetTextureBlendMode(texture.get(), SDL_BLENDMODE_BLEND), 0)
-      << "Alpha blending support required but not present.";
   return unique_ptr<FbImg>(
       new FbImg(std::move(texture), dimensions.x, dimensions.y, true));
 }
@@ -36,9 +33,7 @@ deleter_ptr<SDL_Texture> FbImg::TextureFromSurface(SDL_Surface* surface) {
       SDL_CreateTextureFromSurface(FbGfx::renderer_.get(), surface),
       [](SDL_Texture* t) { SDL_DestroyTexture(t); });
   CHECK_NE(texture.get(), nullptr)
-      << "SDL error (CreateTextureFromSurface): " << SDL_GetError();
-  CHECK_EQ(SDL_SetTextureBlendMode(texture.get(), SDL_BLENDMODE_BLEND), 0)
-      << "Alpha blending support required but not present.";
+      << "SDL error (SDL_CreateTextureFromSurface): " << SDL_GetError();
   return std::move(texture);
 }
 
@@ -52,14 +47,14 @@ unique_ptr<FbImg> FbImg::FromFile(const string& filename) {
       stbi_load(filename.c_str(), &w, &h, &orig_format_unused, STBI_rgb_alpha),
       [](StbImageData* d) { stbi_image_free(d); });
   CHECK_NE(image_data.get(), nullptr)
-      << "stb_image error (load): " << stbi_failure_reason();
+      << "stb_image error (stbi_load): " << stbi_failure_reason();
 
   deleter_ptr<SDL_Surface> surface(
       SDL_CreateRGBSurfaceWithFormatFrom(image_data.get(), w, h, 32, 4 * w,
                                          SDL_PIXELFORMAT_RGBA8888),
       [](SDL_Surface* s) { SDL_FreeSurface(s); });
   CHECK_NE(surface.get(), nullptr)
-      << "SDL error (CreateRGBSurfaceWithFormatFrom): " << SDL_GetError();
+      << "SDL error (SDL_CreateRGBSurfaceWithFormatFrom): " << SDL_GetError();
 
   return unique_ptr<FbImg>(
       new FbImg(TextureFromSurface(surface.get()), w, h, false));

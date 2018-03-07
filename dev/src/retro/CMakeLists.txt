@@ -31,6 +31,7 @@ target_link_libraries(retro_fbimg
 	retro_fbgfx
 	util_deleterptr
 	SDL2-static
+	absl::strings
 	stb_image
 	retro_fbcore
 	glog

@@ -4,7 +4,9 @@
 #include <string>
 
 #include "SDL.h"
+#include "absl/strings/string_view.h"
 #include "glm/vec2.hpp"
+#include "glog/logging.h"
 #include "retro/fbcore.h"
 #include "util/deleterptr.h"
 
@@ -35,6 +37,11 @@ class FbImg {
 
   static util::deleter_ptr<SDL_Texture> TextureFromSurface(
       SDL_Surface* surface);
+
+  void CheckTarget(absl::string_view meth_name) const {
+    CHECK(is_target_) << "Image cannot be the target of drawing operation "
+                      << meth_name << ".";
+  }
 
   const util::deleter_ptr<SDL_Texture> texture_;
   const int w_;

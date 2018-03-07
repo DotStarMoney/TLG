@@ -24,7 +24,7 @@ class FbGfx final {
   static void Screen(glm::ivec2 res, bool fullscreen = false,
                      const std::string& title = "FB Gfx",
                      glm::ivec2 physical_res = {-1, -1});
-  
+
   // Clear the screen (optionally to a color)
   static void Cls(FbColor32 col = FbColor32::BLACK);
   static void Cls(const FbImg& target, FbColor32 col = FbColor32::BLACK);
@@ -114,10 +114,17 @@ class FbGfx final {
     CHECK(is_init()) << "Cannot call " << meth_name << " before FbGfx::Screen.";
   }
 
+  // Using SetRender* methods assumes that CheckInit has already been called.
   static void SetRenderTarget(SDL_Texture* target);
+  static void SetRenderColor(FbColor32 col);
 
-  static void InternalCls(SDL_Texture* texture, FbColor32 col = FbColor32::BLACK);
-
+  static void InternalCls(SDL_Texture* texture, FbColor32 col);
+  static void InternalLine(SDL_Texture* texture, glm::ivec2 a, glm::ivec2 b,
+                           FbColor32 color);
+  static void InternalRect(SDL_Texture* texture, glm::ivec2 a, glm::ivec2 b,
+                           FbColor32 color);
+  static void InternalFillRect(SDL_Texture* texture, glm::ivec2 a, glm::ivec2 b,
+                               FbColor32 color);
 
   static bool is_init() { return window_.get() != nullptr; }
   static util::deleter_ptr<SDL_Window> window_;
