@@ -22,17 +22,21 @@ class FbGfx final {
   // Resolution is the physical resolution of the drawing area, whereas the
   // logical resolution is the resolution at which the pixels are displayed.
   static void Screen(glm::ivec2 res, bool fullscreen = false,
-                     glm::ivec2 logical_res = {-1, -1});
+                     const std::string& title = "FB Gfx",
+                     glm::ivec2 physical_res = {-1, -1});
+  
+  // Clear the screen (optionally to a color)
+  static void Cls(FbColor32 col = FbColor32::BLACK);
+  static void Cls(const FbImg& target, FbColor32 col = FbColor32::BLACK);
 
   static glm::ivec2 GetResolution();
-
-  static glm::ivec2 GetLogicalResolution();
-  static void SetLogicalResolution(glm::ivec2 res);
 
   static bool IsFullscreen();
   static void SetFullscreen(bool fullscreen);
 
-  // Includes vsync delay
+  // Updates the screen after waiting for vsync, clobbering the back buffer
+  // in the process (be sure to Cls if you don't plan on overwriting the whole
+  // backbuffer)
   static void Flip();
 
   static void Line(glm::ivec2 a, glm::ivec2 b,
@@ -109,8 +113,13 @@ class FbGfx final {
   static void CheckInit(absl::string_view meth_name) {
     CHECK(is_init()) << "Cannot call " << meth_name << " before FbGfx::Screen.";
   }
-  static void InitGfx();
-  static bool is_init();
+
+  static void SetRenderTarget(SDL_Texture* target);
+
+  static void InternalCls(SDL_Texture* texture, FbColor32 col = FbColor32::BLACK);
+
+
+  static bool is_init() { return window_.get() != nullptr; }
   static util::deleter_ptr<SDL_Window> window_;
   static util::deleter_ptr<SDL_Renderer> renderer_;
 
