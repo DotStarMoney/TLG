@@ -3,12 +3,14 @@
 using absl::string_view;
 using glm::ivec2;
 using std::string;
+using std::unique_ptr;
 using util::deleter_ptr;
 
 namespace retro {
 FbGfx::Cleanup FbGfx::cleanup_;
 deleter_ptr<SDL_Window> FbGfx::window_ = nullptr;
 deleter_ptr<SDL_Renderer> FbGfx::renderer_ = nullptr;
+unique_ptr<FbImg> FbGfx::basic_font_ = nullptr;
 
 void FbGfx::Screen(ivec2 res, bool fullscreen, const string& title,
                    ivec2 physical_res) {
@@ -18,10 +20,13 @@ void FbGfx::Screen(ivec2 res, bool fullscreen, const string& title,
   SDL_Init(SDL_INIT_VIDEO);
 
   if ((physical_res.x == -1) || (physical_res.y == -1)) physical_res = res;
+  // We open the window initially hidden (and then reveal it once all of this
+  // setup is out of the way)
   deleter_ptr<SDL_Window> window(
-      SDL_CreateWindow(title.c_str(), SDL_WINDOWPOS_CENTERED,
-                       SDL_WINDOWPOS_CENTERED, physical_res.x, physical_res.y,
-                       fullscreen ? SDL_WINDOW_FULLSCREEN : 0),
+      SDL_CreateWindow(
+          title.c_str(), SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+          physical_res.x, physical_res.y,
+          (fullscreen ? SDL_WINDOW_FULLSCREEN : 0) | SDL_WINDOW_HIDDEN),
       [](SDL_Window* w) { SDL_DestroyWindow(w); });
   CHECK_NE(window.get(), nullptr)
       << "SDL error (SDL_CreateWindow): " << SDL_GetError();
@@ -39,9 +44,15 @@ void FbGfx::Screen(ivec2 res, bool fullscreen, const string& title,
   CHECK_EQ(SDL_SetRenderDrawBlendMode(renderer.get(), SDL_BLENDMODE_BLEND), 0)
       << "SDL error (SDL_SetRenderDrawBlendMode): " << SDL_GetError();
 
-  // Start off with a fresh, black window.
+  // Load the system font
+  basic_font_ = FbImg::FromFile(kSystemFontPath);
+
+  // Start off with a fresh black window;
   Cls();
   Flip();
+
+  // Reveal our window, all ready to go!
+  SDL_ShowWindow(window.get());
 }
 
 void FbGfx::SetRenderTarget(SDL_Texture* target) {
@@ -154,5 +165,88 @@ void FbGfx::InternalFillRect(SDL_Texture* texture, ivec2 a, ivec2 b,
   CHECK_EQ(SDL_RenderFillRect(renderer_.get(), &rect), 0)
       << "SDL error (SDL_RenderFillRect): " << SDL_GetError();
 }
+
+// Put & PutEx
+
+void FbGfx::Put(const FbImg& src, ivec2 p, ivec2 src_a, ivec2 src_b) {
+  CheckInit(__func__);
+  InternalPut(nullptr, src.texture_.get(), {src.width, src.height}, p,
+              PutOptions(), src_a, src_b);
+}
+void FbGfx::Put(const FbImg& target, const FbImg& src, ivec2 p, ivec2 src_a,
+                ivec2 src_b) {
+  CheckInit(__func__);
+  target.CheckTarget(__func__);
+  InternalPut(target.texture_.get(), src.texture_.get(),
+              {src.width, src.height}, p, PutOptions(), src_a, src_b);
+}
+
+void FbGfx::PutEx(const FbImg& src, ivec2 p, PutOptions opts, ivec2 src_a,
+                  ivec2 src_b) {
+  CheckInit(__func__);
+  InternalPut(nullptr, src.texture_.get(), {src.width, src.height}, p, opts,
+              src_a, src_b);
+}
+void FbGfx::PutEx(const FbImg& target, const FbImg& src, ivec2 p,
+                  PutOptions opts, ivec2 src_a, ivec2 src_b) {
+  CheckInit(__func__);
+  target.CheckTarget(__func__);
+  InternalPut(target.texture_.get(), src.texture_.get(),
+              {src.width, src.height}, p, opts, src_a, src_b);
+}
+
+inline SDL_BlendMode GetSdlBlendMode(FbGfx::PutOptions::BlendMode m) {
+  switch (m) {
+    case FbGfx::PutOptions::BLEND_NONE:
+      return SDL_BLENDMODE_NONE;
+    case FbGfx::PutOptions::BLEND_ALPHA:
+      return SDL_BLENDMODE_BLEND;
+    case FbGfx::PutOptions::BLEND_ADD:
+      return SDL_BLENDMODE_ADD;
+    case FbGfx::PutOptions::BLEND_MOD:
+      return SDL_BLENDMODE_MOD;
+    default:
+      CHECK(false) << "Not a real blend mode: " << m;
+  }
+}
+
+void FbGfx::InternalPut(SDL_Texture* dest, SDL_Texture* src, ivec2 src_dims,
+                        ivec2 p, PutOptions opts, ivec2 src_a, ivec2 src_b) {
+  SetRenderTarget(dest);
+  CHECK_EQ(SDL_SetTextureBlendMode(src, GetSdlBlendMode(opts.blend)), 0)
+      << "SDL error (SDL_SetTextureBlendMode): " << SDL_GetError();
+  CHECK_EQ(SDL_SetTextureColorMod(src, opts.mod.channel.r, opts.mod.channel.g,
+                                  opts.mod.channel.b),
+           0)
+      << "SDL error (SDL_SetTextureColorMod): " << SDL_GetError();
+  CHECK_EQ(SDL_SetTextureAlphaMod(src, opts.mod.channel.a), 0)
+      << "SDL error (SDL_SetTextureAlphaMod): " << SDL_GetError();
+
+  SDL_Rect dst_rect;
+  SDL_Rect src_rect;
+
+  dst_rect.x = p.x;
+  dst_rect.y = p.y;
+
+  SDL_Rect* src_rect_target = &src_rect;
+  if ((src_a.x == -1) || (src_a.y == -1) || (src_b.x == -1) ||
+      (src_b.y == -1)) {
+    src_rect_target == nullptr;
+    dst_rect.w = src_dims.x;
+    dst_rect.h = src_dims.y;
+  } else {
+    src_rect.x = src_a.x;
+    src_rect.y = src_a.y;
+    src_rect.w = src_b.x - src_a.x + 1;
+    src_rect.h = src_b.y - src_a.y + 1;
+    dst_rect.w = src_rect.w;
+    dst_rect.h = src_rect.h;
+  }
+
+  CHECK_EQ(SDL_RenderCopy(renderer_.get(), src, src_rect_target, &dst_rect), 0)
+      << "SDL error (SDL_RenderCopy): " << SDL_GetError();
+}
+
+// TextLine
 
 }  // namespace retro

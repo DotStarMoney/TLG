@@ -13,13 +13,15 @@
 
 namespace retro {
 
+constexpr char kSystemFontPath[] = "retro/system_font.png";
+
 class FbImg;
 class FbGfx final {
   friend class FbImg;
 
  public:
   // Must be called to use graphics functionality, can can only be called once.
-  // Resolution is the physical resolution of the drawing area, whereas the
+  // Resolution is the physical resolution of the drawing area whereas the
   // logical resolution is the resolution at which the pixels are displayed.
   static void Screen(glm::ivec2 res, bool fullscreen = false,
                      const std::string& title = "FB Gfx",
@@ -90,15 +92,15 @@ class FbGfx final {
 
   struct PutOptions {
    public:
-    enum BlendMode { BLEND_NONE, BLEND_ALPHA, BLEND_ADD };
-    BlendMode blend_ = BLEND_NONE;
-    FbColor32 mod_ = FbColor32::WHITE;
+    enum BlendMode { BLEND_NONE, BLEND_ALPHA, BLEND_ADD, BLEND_MOD };
+    BlendMode blend = BLEND_NONE;
+    FbColor32 mod = FbColor32::WHITE;
     PutOptions& SetBlend(BlendMode blend) {
-      blend_ = blend;
+      this->blend = blend;
       return *this;
     }
     PutOptions& SetMod(FbColor32 mod) {
-      mod_ = mod;
+      this->mod = mod;
       return *this;
     }
   };
@@ -125,10 +127,14 @@ class FbGfx final {
                            FbColor32 color);
   static void InternalFillRect(SDL_Texture* texture, glm::ivec2 a, glm::ivec2 b,
                                FbColor32 color);
+  static void InternalPut(SDL_Texture* dest, SDL_Texture* src, glm::ivec2 src_dims, glm::ivec2 p,
+                          PutOptions opts, glm::ivec2 src_a, glm::ivec2 src_b);
 
   static bool is_init() { return window_.get() != nullptr; }
   static util::deleter_ptr<SDL_Window> window_;
   static util::deleter_ptr<SDL_Renderer> renderer_;
+
+  static std::unique_ptr<FbImg> basic_font_;
 
   struct Cleanup {
     ~Cleanup() { sdl_util::Cleanup::UnregisterModule(); }
