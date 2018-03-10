@@ -116,6 +116,8 @@ class FbGfx final {
     CHECK(is_init()) << "Cannot call " << meth_name << " before FbGfx::Screen.";
   }
 
+  static void PrepareFont();
+
   // Using SetRender* methods assumes that CheckInit has already been called.
   static void SetRenderTarget(SDL_Texture* target);
   static void SetRenderColor(FbColor32 col);
@@ -127,8 +129,16 @@ class FbGfx final {
                            FbColor32 color);
   static void InternalFillRect(SDL_Texture* texture, glm::ivec2 a, glm::ivec2 b,
                                FbColor32 color);
-  static void InternalPut(SDL_Texture* dest, SDL_Texture* src, glm::ivec2 src_dims, glm::ivec2 p,
-                          PutOptions opts, glm::ivec2 src_a, glm::ivec2 src_b);
+  static void InternalPut(SDL_Texture* dest, SDL_Texture* src,
+                          glm::ivec2 src_dims, glm::ivec2 p, PutOptions opts,
+                          glm::ivec2 src_a, glm::ivec2 src_b);
+  static void InternalTextLine(SDL_Texture* texture, absl::string_view text,
+                               glm::ivec2 p, FbColor32 color,
+                               TextHAlign h_align, TextVAlign v_align);
+  static void InternalTextParagraph(SDL_Texture* texture,
+                                    absl::string_view text, glm::ivec2 a,
+                                    glm::ivec2 b, FbColor32 color,
+                                    TextHAlign h_align, TextVAlign v_align);
 
   static bool is_init() { return window_.get() != nullptr; }
   static util::deleter_ptr<SDL_Window> window_;
