@@ -22,7 +22,7 @@ unique_ptr<FbImg> FbImg::OfSize(ivec2 dimensions, FbColor32 fill_color) {
       SDL_CreateTexture(FbGfx::renderer_.get(), SDL_PIXELFORMAT_RGBA8888,
                         SDL_TEXTUREACCESS_TARGET, dimensions.x, dimensions.y),
       [](SDL_Texture* t) { SDL_DestroyTexture(t); });
-  CHECK_NE(texture.get(), nullptr)
+  CHECK_NE(texture.get(), static_cast<SDL_Texture*>(NULL))
       << "SDL error (SDL_CreateTexture): " << SDL_GetError();
   return unique_ptr<FbImg>(
       new FbImg(std::move(texture), dimensions.x, dimensions.y, true));
@@ -32,7 +32,7 @@ deleter_ptr<SDL_Texture> FbImg::TextureFromSurface(SDL_Surface* surface) {
   deleter_ptr<SDL_Texture> texture(
       SDL_CreateTextureFromSurface(FbGfx::renderer_.get(), surface),
       [](SDL_Texture* t) { SDL_DestroyTexture(t); });
-  CHECK_NE(texture.get(), nullptr)
+  CHECK_NE(texture.get(), static_cast<SDL_Texture*>(NULL))
       << "SDL error (SDL_CreateTextureFromSurface): " << SDL_GetError();
   return std::move(texture);
 }
@@ -46,14 +46,14 @@ unique_ptr<FbImg> FbImg::FromFile(const string& filename) {
   deleter_ptr<StbImageData> image_data(
       stbi_load(filename.c_str(), &w, &h, &orig_format_unused, STBI_rgb_alpha),
       [](StbImageData* d) { stbi_image_free(d); });
-  CHECK_NE(image_data.get(), nullptr)
+  CHECK_NE(image_data.get(), static_cast<StbImageData*>(NULL))
       << "stb_image error (stbi_load): " << stbi_failure_reason();
 
   deleter_ptr<SDL_Surface> surface(
       SDL_CreateRGBSurfaceWithFormatFrom(image_data.get(), w, h, 32, 4 * w,
                                          SDL_PIXELFORMAT_RGBA8888),
       [](SDL_Surface* s) { SDL_FreeSurface(s); });
-  CHECK_NE(surface.get(), nullptr)
+  CHECK_NE(surface.get(), static_cast<SDL_Surface*>(NULL))
       << "SDL error (SDL_CreateRGBSurfaceWithFormatFrom): " << SDL_GetError();
 
   return unique_ptr<FbImg>(

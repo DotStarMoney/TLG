@@ -1,11 +1,12 @@
 #ifndef RETRO_FBGFX_H_
+#define RETRO_FBGFX_H_
 
 #include "SDL.h"
 #include "absl/strings/string_view.h"
 #include "glm/vec2.hpp"
 #include "glog/logging.h"
-#include "retro/fbimg.h"
 #include "sdl_util/cleanup.h"
+#include "retro/fbcore.h"
 #include "util/deleterptr.h"
 
 // Single context, micro graphics library to mimic the venerable fbgfx.bi of

@@ -1,4 +1,5 @@
 #ifndef RETRO_FBIMG_H_
+#define RETRO_FBIMG_H_
 
 #include <memory>
 #include <string>
@@ -19,6 +20,8 @@ class FbImg {
   friend class FbGfx;
 
  public:
+  virtual ~FbImg() {}
+
   // Load an image from a file.
   static std::unique_ptr<FbImg> FromFile(const std::string& filename);
   // Create an image of the provided dimensions filled with a color constant.
@@ -33,7 +36,6 @@ class FbImg {
   typedef unsigned char StbImageData;
   FbImg(util::deleter_ptr<SDL_Texture> texture, int w, int h, bool is_target);
 
-  virtual ~FbImg() {}
 
   static util::deleter_ptr<SDL_Texture> TextureFromSurface(
       SDL_Surface* surface);

@@ -1,5 +1,7 @@
 #include "retro/fbgfx.h"
 
+#include "retro/fbimg.h"
+
 using absl::string_view;
 using glm::ivec2;
 using std::string;
@@ -32,14 +34,14 @@ void FbGfx::Screen(ivec2 res, bool fullscreen, const string& title,
           physical_res.x, physical_res.y,
           (fullscreen ? SDL_WINDOW_FULLSCREEN : 0) | SDL_WINDOW_HIDDEN),
       [](SDL_Window* w) { SDL_DestroyWindow(w); });
-  CHECK_NE(window.get(), nullptr)
+  CHECK_NE(window.get(), static_cast<SDL_Window*>(nullptr))
       << "SDL error (SDL_CreateWindow): " << SDL_GetError();
   deleter_ptr<SDL_Renderer> renderer(
       SDL_CreateRenderer(window.get(), -1,
                          SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC |
                              SDL_RENDERER_TARGETTEXTURE),
       [](SDL_Renderer* r) { SDL_DestroyRenderer(r); });
-  CHECK_NE(renderer.get(), nullptr)
+  CHECK_NE(renderer.get(), static_cast<SDL_Renderer*>(nullptr))
       << "SDL error (SDL_CreateRenderer): " << SDL_GetError();
 
   CHECK_EQ(SDL_RenderSetLogicalSize(renderer.get(), res.x, res.y), 0)
@@ -183,7 +185,7 @@ void FbGfx::InternalFillRect(SDL_Texture* texture, ivec2 a, ivec2 b,
 
 void FbGfx::Put(const FbImg& src, ivec2 p, ivec2 src_a, ivec2 src_b) {
   CheckInit(__func__);
-  InternalPut(nullptr, src.texture_.get(), {src.width, src.height}, p,
+  InternalPut(nullptr, src.texture_.get(), {src.width(), src.height()}, p,
               PutOptions(), src_a, src_b);
 }
 void FbGfx::Put(const FbImg& target, const FbImg& src, ivec2 p, ivec2 src_a,
@@ -191,13 +193,13 @@ void FbGfx::Put(const FbImg& target, const FbImg& src, ivec2 p, ivec2 src_a,
   CheckInit(__func__);
   target.CheckTarget(__func__);
   InternalPut(target.texture_.get(), src.texture_.get(),
-              {src.width, src.height}, p, PutOptions(), src_a, src_b);
+              {src.width(), src.height()}, p, PutOptions(), src_a, src_b);
 }
 
 void FbGfx::PutEx(const FbImg& src, ivec2 p, PutOptions opts, ivec2 src_a,
                   ivec2 src_b) {
   CheckInit(__func__);
-  InternalPut(nullptr, src.texture_.get(), {src.width, src.height}, p, opts,
+  InternalPut(nullptr, src.texture_.get(), {src.width(), src.height()}, p, opts,
               src_a, src_b);
 }
 void FbGfx::PutEx(const FbImg& target, const FbImg& src, ivec2 p,
@@ -205,7 +207,7 @@ void FbGfx::PutEx(const FbImg& target, const FbImg& src, ivec2 p,
   CheckInit(__func__);
   target.CheckTarget(__func__);
   InternalPut(target.texture_.get(), src.texture_.get(),
-              {src.width, src.height}, p, opts, src_a, src_b);
+              {src.width(), src.height()}, p, opts, src_a, src_b);
 }
 
 inline SDL_BlendMode GetSdlBlendMode(FbGfx::PutOptions::BlendMode m) {

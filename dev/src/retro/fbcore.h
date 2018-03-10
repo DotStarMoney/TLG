@@ -1,4 +1,5 @@
 #ifndef RETRO_FBCORE_H_
+#define RETRO_FBCORE_H_
 
 #include <stdint.h>
 
