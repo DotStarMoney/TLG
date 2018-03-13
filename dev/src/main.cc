@@ -1,62 +1,28 @@
-#include <iostream>
-#include <chrono>
+#include "glog/logging.h"
+#include "retro/fbgfx.h"
+#include "retro/fbimg.h"
 
-#include "assert.h"
-#include "audiosystem.h"
-#include "audiocontext.h"
-#include "resourcemanager.h"
-#include "instrument.h"
-#include "sampledatam16.h"
-#include "SDL.h"
+using retro::FbColor32;
+using retro::FbGfx;
+using retro::FbImg;
 
+int main(int argc, char* argv[]) {
+  google::InitGoogleLogging(argv[0]);
+  FbGfx::Screen({640, 480});
 
-int main(int argc, char** argv) {
+  FbGfx::Cls(FbColor32::BLACK);
 
-  ResourceManager resource_manager;
-  resource_manager.MapIDToURI("IORGAN",  "ins/organ.ins");
-  resource_manager.MapIDToURI("SPRIZE", "snd/prize.brr");
+  auto testImg = FbImg::FromFile("res/wodde.png");
 
-  resource_manager.RegisterDeserializer("ins", 
-      audio::Instrument::Deserialize);
-  resource_manager.RegisterDeserializer("brr",
-      audio::SampleDataM16::Deserialize);
-  
-  audio::AudioSystem audio_system(audio::SampleRate::_32K);
-  // delay, filter (can be combined with delay), compressor, out
-  // audio_system.SetTap(0, 1) or something
+  FbGfx::Put(*testImg.get(), {0, 0});
 
-  audio::AudioContext main_context;
+  FbGfx::Rect({0, 0}, {100, 200});
+  FbGfx::TextParagraph("The Supple Husk Belched Sweet Egg Wax", {0, 0},
+                       {100, 200});
 
-  audio_system.SetContext(&main_context);
+  FbGfx::Flip();
 
+  system("pause");
 
-  auto sound = main_context.CreateSound(0).ConsumeValueOrDie();
-
-  ASSERT_EQ(resource_manager.Load("IORGAN"), util::OkStatus); 
-  ASSERT_EQ(resource_manager.Load("SPRIZE"), util::OkStatus);
-
-  for (;;) {
-    
-    if ((rand() % 1000) == 0) {
-      sound->Play(
-          ((rand() % 2) == 0) ? "IORGAN" : "SPRIZE", 
-          (rand() % 17) - 8);
-    }
-  
-    audio_system.Sync();
-
-    SDL_Delay(20);
-  }
-  
-  
-  // TODO(?): Build Clang Fix or whatever for Google style guide into workflow
-  // TODO(?): Need to setup tests, need way to run tests, and to write tests
-  //          for existing classes
-  // TODO(?): Need logging capabilities and need to log in "asserts,"
-  // TODO(?): Add stack trace to status
-  // TODO(?): Determine what to do about debug flags
-  // TODO(?): Look into allocator, worth tracking memory usage?
-  // TODO(?): One final check to apply new stuff to existing code
-  // TODO(?): Start having fun :D
   return 0;
 }

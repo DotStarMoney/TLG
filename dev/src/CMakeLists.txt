@@ -33,3 +33,17 @@ add_subdirectory(${LOCAL}/sdl_util)
 #if(UNIX)
 #	#
 #endif()
+
+add_executable(TLG
+	main.cc)
+target_link_libraries(TLG
+	retro_fbgfx
+	SDL2main
+	glog)
+add_custom_command(TARGET TLG POST_BUILD
+                   COMMAND ${CMAKE_COMMAND} -E copy_directory
+                       ${CMAKE_BINARY_DIR}/../res $<TARGET_FILE_DIR:TLG>/res)
+add_custom_command(TARGET TLG POST_BUILD
+                   COMMAND ${CMAKE_COMMAND} -E copy_directory
+                       ${CMAKE_BINARY_DIR}/../res $<TARGET_FILE_DIR:TLG>/../res)
+					   

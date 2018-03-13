@@ -1,4 +1,4 @@
-#include "sdl/cleanup.h"
+#include "sdl_util/cleanup.h"
 
 namespace sdl_util {
 int Cleanup::remaining_modules_ = 0;

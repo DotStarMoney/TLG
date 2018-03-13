@@ -5,8 +5,8 @@
 #include "absl/strings/string_view.h"
 #include "glm/vec2.hpp"
 #include "glog/logging.h"
-#include "sdl_util/cleanup.h"
 #include "retro/fbcore.h"
+#include "sdl_util/cleanup.h"
 #include "util/deleterptr.h"
 
 // Single context, micro graphics library to mimic the venerable fbgfx.bi of
@@ -14,7 +14,7 @@
 
 namespace retro {
 
-constexpr char kSystemFontPath[] = "retro/system_font.png";
+constexpr char kSystemFontPath[] = "res/system_font_.png";
 
 class FbImg;
 class FbGfx final {
@@ -94,7 +94,7 @@ class FbGfx final {
   struct PutOptions {
    public:
     enum BlendMode { BLEND_NONE, BLEND_ALPHA, BLEND_ADD, BLEND_MOD };
-    BlendMode blend = BLEND_NONE;
+    BlendMode blend = BLEND_ALPHA;
     FbColor32 mod = FbColor32::WHITE;
     PutOptions& SetBlend(BlendMode blend) {
       this->blend = blend;
@@ -149,7 +149,7 @@ class FbGfx final {
 
   struct Cleanup {
     ~Cleanup() { sdl_util::Cleanup::UnregisterModule(); }
-  };  // namespace retro
+  };
   static Cleanup cleanup_;
 };
 

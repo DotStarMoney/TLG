@@ -28,26 +28,27 @@ void FbGfx::Screen(ivec2 res, bool fullscreen, const string& title,
   if ((physical_res.x == -1) || (physical_res.y == -1)) physical_res = res;
   // We open the window initially hidden (and then reveal it once all of this
   // setup is out of the way)
-  deleter_ptr<SDL_Window> window(
+  window_ = deleter_ptr<SDL_Window>(
       SDL_CreateWindow(
           title.c_str(), SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
           physical_res.x, physical_res.y,
           (fullscreen ? SDL_WINDOW_FULLSCREEN : 0) | SDL_WINDOW_HIDDEN),
       [](SDL_Window* w) { SDL_DestroyWindow(w); });
-  CHECK_NE(window.get(), static_cast<SDL_Window*>(nullptr))
+  CHECK_NE(window_.get(), static_cast<SDL_Window*>(nullptr))
       << "SDL error (SDL_CreateWindow): " << SDL_GetError();
-  deleter_ptr<SDL_Renderer> renderer(
-      SDL_CreateRenderer(window.get(), -1,
+  renderer_ = deleter_ptr<SDL_Renderer>(
+      SDL_CreateRenderer(window_.get(), -1,
                          SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC |
                              SDL_RENDERER_TARGETTEXTURE),
       [](SDL_Renderer* r) { SDL_DestroyRenderer(r); });
-  CHECK_NE(renderer.get(), static_cast<SDL_Renderer*>(nullptr))
+
+  CHECK_NE(renderer_.get(), static_cast<SDL_Renderer*>(nullptr))
       << "SDL error (SDL_CreateRenderer): " << SDL_GetError();
 
-  CHECK_EQ(SDL_RenderSetLogicalSize(renderer.get(), res.x, res.y), 0)
+  CHECK_EQ(SDL_RenderSetLogicalSize(renderer_.get(), res.x, res.y), 0)
       << "SDL error (SDL_RenderSetLogicalSize): " << SDL_GetError();
 
-  CHECK_EQ(SDL_SetRenderDrawBlendMode(renderer.get(), SDL_BLENDMODE_BLEND), 0)
+  CHECK_EQ(SDL_SetRenderDrawBlendMode(renderer_.get(), SDL_BLENDMODE_BLEND), 0)
       << "SDL error (SDL_SetRenderDrawBlendMode): " << SDL_GetError();
 
   // Load the system font
@@ -58,7 +59,7 @@ void FbGfx::Screen(ivec2 res, bool fullscreen, const string& title,
   Flip();
 
   // Reveal our window, all ready to go!
-  SDL_ShowWindow(window.get());
+  SDL_ShowWindow(window_.get());
 }
 
 void FbGfx::PrepareFont() {
@@ -228,6 +229,7 @@ inline SDL_BlendMode GetSdlBlendMode(FbGfx::PutOptions::BlendMode m) {
 void FbGfx::InternalPut(SDL_Texture* dest, SDL_Texture* src, ivec2 src_dims,
                         ivec2 p, PutOptions opts, ivec2 src_a, ivec2 src_b) {
   SetRenderTarget(dest);
+
   CHECK_EQ(SDL_SetTextureBlendMode(src, GetSdlBlendMode(opts.blend)), 0)
       << "SDL error (SDL_SetTextureBlendMode): " << SDL_GetError();
   CHECK_EQ(SDL_SetTextureColorMod(src, opts.mod.channel.r, opts.mod.channel.g,
@@ -246,7 +248,7 @@ void FbGfx::InternalPut(SDL_Texture* dest, SDL_Texture* src, ivec2 src_dims,
   const SDL_Rect* src_rect_target = &src_rect;
   if ((src_a.x == -1) || (src_a.y == -1) || (src_b.x == -1) ||
       (src_b.y == -1)) {
-    src_rect_target == nullptr;
+    src_rect_target = nullptr;
     dst_rect.w = src_dims.x;
     dst_rect.h = src_dims.y;
   } else {
@@ -282,9 +284,10 @@ void FbGfx::InternalTextLine(SDL_Texture* texture, string_view text, ivec2 p,
                              FbColor32 color, TextHAlign h_align,
                              TextVAlign v_align) {
   SetRenderTarget(texture);
-  CHECK_EQ(SDL_SetTextureColorMod(texture, color.channel.r, color.channel.g,
-                                  color.channel.b),
-           0)
+  CHECK_EQ(
+      SDL_SetTextureColorMod(basic_font_.get()->texture_.get(), color.channel.r,
+                             color.channel.g, color.channel.b),
+      0)
       << "SDL error (SDL_SetTextureColorMod): " << SDL_GetError();
   const ivec2 box_dims{text.size() * kTextCharacterDims.x,
                        kTextCharacterDims.y};
@@ -319,8 +322,8 @@ void FbGfx::InternalTextLine(SDL_Texture* texture, string_view text, ivec2 p,
   SDL_Rect dst_rect{p.x, p.y, kTextCharacterDims.x, kTextCharacterDims.y};
   SDL_Texture* font_tex = basic_font_.get()->texture_.get();
   for (const char c : text) {
-    src_rect.x = (c & 0x0f) * kTextCharacterDims.x;
-    src_rect.y = (c << 4) * kTextCharacterDims.y;
+    src_rect.x = (c & 0x1f) * kTextCharacterDims.x;
+    src_rect.y = (c >> 5) * kTextCharacterDims.y;
     CHECK_EQ(SDL_RenderCopy(renderer_.get(), font_tex, &src_rect, &dst_rect), 0)
         << "SDL error (SDL_RenderCopy): " << SDL_GetError();
     dst_rect.x += kTextCharacterDims.x;
@@ -347,13 +350,14 @@ void FbGfx::InternalTextParagraph(SDL_Texture* texture, string_view text,
                                   ivec2 a, ivec2 b, FbColor32 color,
                                   TextHAlign h_align, TextVAlign v_align) {
   SetRenderTarget(texture);
-  CHECK_EQ(SDL_SetTextureColorMod(texture, color.channel.r, color.channel.g,
-                                  color.channel.b),
-           0)
+  CHECK_EQ(
+      SDL_SetTextureColorMod(basic_font_.get()->texture_.get(), color.channel.r,
+                             color.channel.g, color.channel.b),
+      0)
       << "SDL error (SDL_SetTextureColorMod): " << SDL_GetError();
   if (a.x > b.x) std::swap(a.x, b.y);
   if (a.y > b.y) std::swap(a.y, b.y);
-  const ivec2 box_dims = b - a;
+  const ivec2 box_dims = b - a + ivec2{1, 1};
 
   if ((box_dims.x < kTextCharacterDims.x) ||
       (box_dims.y < kTextCharacterDims.y))
@@ -381,15 +385,19 @@ void FbGfx::InternalTextParagraph(SDL_Texture* texture, string_view text,
   SDL_Texture* font_tex = basic_font_.get()->texture_.get();
   int cursor = 0;
   while (cursor < text.size()) {
+    int space_skip = 1;
     int line_term = cursor;
     int line_s = cursor;
     for (line_s = cursor;
          (line_s < text.size()) &&
          (((line_s - cursor) * kTextCharacterDims.x) <= box_dims.x);
-         ++line_term) {
-      if (text[line_term] == ' ') line_term = line_s;
+         ++line_s) {
+      if (text[line_s] == ' ') line_term = line_s;
     }
-    if (line_term == cursor) line_term = line_s;
+    if (line_term == cursor) {
+      line_term = line_s;
+      if (text[line_s] != ' ') space_skip = 0;
+    }
     const int line_width = (line_term - cursor) * kTextCharacterDims.x;
     switch (v_align) {
       case TEXT_ALIGN_H_LEFT:
@@ -408,15 +416,15 @@ void FbGfx::InternalTextParagraph(SDL_Texture* texture, string_view text,
 
     for (int c_i = cursor; c_i < line_term; ++c_i) {
       const char c = text[c_i];
-      src_rect.x = (c & 0x0f) * kTextCharacterDims.x;
-      src_rect.y = (c << 4) * kTextCharacterDims.y;
+      src_rect.x = (c & 0x1f) * kTextCharacterDims.x;
+      src_rect.y = (c >> 5) * kTextCharacterDims.y;
       CHECK_EQ(SDL_RenderCopy(renderer_.get(), font_tex, &src_rect, &dst_rect),
                0)
           << "SDL error (SDL_RenderCopy): " << SDL_GetError();
       dst_rect.x += kTextCharacterDims.x;
     }
 
-    cursor = line_term;
+    cursor = line_term + space_skip;
     dst_rect.y += kTextCharacterDims.y;
   }
 }

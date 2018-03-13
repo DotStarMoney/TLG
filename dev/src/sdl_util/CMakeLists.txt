@@ -3,7 +3,7 @@ project(TLG)
 # -------------------------------- BUILD TARGETS -------------------------------
 #_______________________________________________________________________________
 #sdl_util::Cleanup
-add_executable(sdl_util_cleanup
+add_library(sdl_util_cleanup
 	cleanup.h
 	cleanup.cc)
 target_link_libraries(sdl_util_cleanup
