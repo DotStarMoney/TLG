@@ -12,8 +12,7 @@ add_subdirectory(${LOCAL}/util)
 add_subdirectory(${LOCAL}/physics)
 add_subdirectory(${LOCAL}/retro)
 add_subdirectory(${LOCAL}/sdl_util)
-
-
+add_subdirectory(${LOCAL}/tlg_lib)
 
 # -------------------------------- BUILD TARGETS -------------------------------
 
@@ -38,6 +37,7 @@ add_executable(TLG
 	main.cc)
 target_link_libraries(TLG
 	retro_fbgfx
+	tlg_lib_indexstagegraph
 	SDL2main
 	glog)
 add_custom_command(TARGET TLG POST_BUILD

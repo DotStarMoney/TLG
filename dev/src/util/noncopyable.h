@@ -13,12 +13,11 @@
 namespace util {
 
 class NonCopyable {
- protected:
+ public:
   NonCopyable() = default;
-  ~NonCopyable() = default;
 
-  NonCopyable(NonCopyable const&) = delete;
-  void operator=(NonCopyable const&) = delete;
+  NonCopyable(const NonCopyable&) = delete;
+  NonCopyable& operator=(const NonCopyable&) = delete;
 };
 
 }  // namespace util

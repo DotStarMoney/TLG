@@ -5,8 +5,8 @@
 #include <variant>
 
 #include "glog/logging.h"
-#include "util/noncopyable.h"
 #include "util/status.h"
+#include "util/noncopyable.h"
 
 namespace util {
 

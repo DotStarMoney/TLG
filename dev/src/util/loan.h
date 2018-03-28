@@ -10,7 +10,8 @@ namespace util {
 
 // Loan and Lender together help safely implementing the generator pattern.
 // One class, a Lender, can create Loan objects that that must not outlive the
-// Lender (and are safely caught using reference counting if so).
+// Lender (and are safely caught using reference counting if so). Loans should
+// only be accessed from a single thread.
 //
 // A common example is a parent class creating an object for a client that
 // references the parent. In this case, the parent class subclasses lender,
@@ -30,8 +31,10 @@ class Loan : public NonCopyable {
     if (loaned_ptr_ != nullptr) --(*lender_ref_);
   }
 
+  Loan() : lender_ref_(nullptr), loaned_ptr_(nullptr) {}
+
   // The move constructor invalidates the old reference.
-  Loan(Loan&& loan)
+  Loan(Loan&& loan) 
       : lender_ref_(loan.lender_ref_), loaned_ptr_(loan.loaned_ptr_) {
     loan.loaned_ptr_ = nullptr;
   }
@@ -39,12 +42,12 @@ class Loan : public NonCopyable {
   // the pointer using get() and access a loaned object that way.
   T& operator*() const {
     CHECK_NE(loaned_ptr_, reinterpret_cast<T*>(nullptr))
-        << "Loaned ptr invalidated.";
+        << "Loaned ptr invalid.";
     return *loaned_ptr_;
   }
   T* operator->() const {
     CHECK_NE(loaned_ptr_, reinterpret_cast<T*>(nullptr))
-        << "Loaned ptr invalidated.";
+        << "Loaned ptr invalid.";
     return loaned_ptr_;
   }
   T* get() const { return loaned_ptr_; }
@@ -59,7 +62,7 @@ class Loan : public NonCopyable {
   T* loaned_ptr_;
 };
 
-class Lender : public NonCopyable {
+class Lender : public util::NonCopyable {
  public:
   Lender() : ref_(0) {}
   virtual ~Lender() { TerminateLoans(); }
