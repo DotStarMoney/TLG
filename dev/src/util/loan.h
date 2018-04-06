@@ -38,6 +38,16 @@ class Loan : public NonCopyable {
       : lender_ref_(loan.lender_ref_), loaned_ptr_(loan.loaned_ptr_) {
     loan.loaned_ptr_ = nullptr;
   }
+
+  // Move assignment invalidates the old reference and calls the destructor
+  Loan& operator=(Loan&& loan) {
+    this->~Loan();
+    lender_ref_ = loan.lender_ref_;
+    loaned_ptr_ = loan.loaned_ptr_;
+    loan.loaned_ptr_ = nullptr;
+    return *this;
+  }
+
   // Because these operations involve a comparison, its best to store the
   // the pointer using get() and access a loaned object that way.
   T& operator*() const {

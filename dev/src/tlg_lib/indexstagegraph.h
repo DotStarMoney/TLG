@@ -26,16 +26,13 @@ class StageGraph : public util::NonCopyable {
 
  public:
   StageGraph() {}
-  ~StageGraph() {
-    // Make sure we resolve returning loaned references in the right order.
-    DeleteScenesAboveLevel(0, 0);
-  }
 
   static std::unique_ptr<StageGraph<STATIC_C, C>> Create() {
     return std::make_unique<StageGraph<STATIC_C, C>>();
   }
 
-  void AddStage(const std::string& name, std::unique_ptr<STATIC_C> static_content,
+  void AddStage(const std::string& name,
+                std::unique_ptr<STATIC_C> static_content,
                 std::unique_ptr<C> content) {
     auto stage_insert =
         stages_.emplace(name, Stage(name, std::move(static_content)));
@@ -44,10 +41,12 @@ class StageGraph : public util::NonCopyable {
     auto& cell =
         stage.cells_.emplace(0, std::map<Level, Scene>()).first->second;
     cell.emplace(0, Scene(std::move(content)));
-    scenes_by_level_.emplace(
-        CellThenLevel(0, 0),
+    cleanup_index_.insert(
         DeletingSceneRef(stage.MakeLoanForDeletingReference(), 0, 0));
   }
+
+  // For testing. Returns the number of scenes across all stages and cells.
+  int size() const { return cleanup_index_.size(); }
 
   class Index {
     friend class IndexStageGraph<STATIC_C, C>;
@@ -115,34 +114,22 @@ class StageGraph : public util::NonCopyable {
     Scene& GetScene(Index index) {
       CHECK(!name_.empty()) << "Stage invalidated, was it moved?";
 
-      auto cell_iter = cells_.find(index.cell_id_);
-      if (cell_iter == cells_.end()) {
-        cell_iter = cells_.upper_bound(index.cell_id_);
+      auto cell_iter = cells_.lower_bound(index.cell_id_);
+      if ((cell_iter == cells_.end()) || (cell_iter->first > index.cell_id_)) {
+        --cell_iter;
       }
-      CHECK(cell_iter != cells_.end()) << "Couldn't retrieve cell, are cells "
-                                          "missing? Is the cell id malformed?";
+      CHECK(cell_iter != cells_.end())
+          << "Cell id lower than that of all cells in stage.";
 
       std::map<Level, Scene>& cell = cell_iter->second;
       auto scene_iter = cell.lower_bound(index.level_);
+      if ((scene_iter == cell.end()) || (scene_iter->first > index.level_)) {
+        --scene_iter;
+      }
       CHECK(scene_iter != cell.end())
           << "Index level lower than that of all scenes in cell.";
+
       return scene_iter->second;
-    }
-
-    void DeleteScenesAboveLevel(CellId cell_id, Level level) {
-      CHECK(!name_.empty()) << "Stage invalidated, was it moved?";
-      auto stack_i = cells_.find(cell_id);
-      CHECK(stack_i != cells_.end())
-          << "When deleting scene, cell_id: " << cell_id
-          << " isn't valid for stage: " << name_;
-      auto& stack = stack_i->second;
-
-      auto end_iter = stack.find(level);
-      if (end_iter == stack.end()) {
-        end_iter = stack.upper_bound(level);
-      }
-      stack.erase(stack.begin(), end_iter);
-      if (stack.empty()) cells_.erase(stack_i);
     }
 
     // Delete a scene at the specified level from the cell at the specified id.
@@ -168,26 +155,11 @@ class StageGraph : public util::NonCopyable {
     std::unique_ptr<STATIC_C> static_content_;
   };
 
-  // Used to order elements by cell_id then level for deletion in an effort to
-  // not invalidate any loans held by individual Scenes.
-  struct CellThenLevel {
-    const CellId cell_id;
-    const Level level;
-
-    CellThenLevel(CellId cell_id, Level level)
-        : cell_id(cell_id), level(level) {}
-    // We flip the direction internally of the comparison s.t. scenes_by_level_
-    // is sorted by the highest level/highest cell ids first
-    bool operator<(const CellThenLevel& other) const {
-      if (cell_id == other.cell_id) return level > other.level;
-      return cell_id > other.cell_id;
-    }
-  };
   // A reference to a scene that deletes the scene when the reference destructs.
   struct DeletingSceneRef : public util::NonCopyable {
     util::Loan<Stage> stage;
-    const CellId cell_id;
-    const Level level;
+    CellId cell_id;
+    Level level;
 
     DeletingSceneRef(util::Loan<Stage>&& stage, CellId cell_id, Level level)
         : stage(std::move(stage)), cell_id(cell_id), level(level) {}
@@ -197,18 +169,100 @@ class StageGraph : public util::NonCopyable {
           cell_id(other.cell_id),
           level(other.level) {}
 
+    DeletingSceneRef& operator=(DeletingSceneRef&& other) {
+      stage = std::move(other.stage);
+      cell_id = other.cell_id;
+      level = other.level;
+      return *this;
+    }
+
     virtual ~DeletingSceneRef() {
       if (stage.get() != nullptr) stage->DeleteScene(cell_id, level);
     }
   };
 
-  // May delete scenes across multiple stages.
-  void DeleteScenesAboveLevel(CellId cell_id, Level level) {
-    auto end_iter = scenes_by_level_.find({cell_id, level});
-    CHECK(end_iter != scenes_by_level_.end())
-        << "Cannot delete scenes below an index which does not exist.";
-    scenes_by_level_.erase(scenes_by_level_.begin(), end_iter);
-  }
+  class SceneCleanupIndex {
+    template <bool LEVEL_MAJOR>
+    struct SceneIndex {
+      CellId cell_id;
+      Level level;
+      SceneIndex& operator=(const SceneIndex& x) = default;
+      SceneIndex(CellId cell_id, Level level)
+          : cell_id(cell_id), level(level) {}
+      bool operator==(const SceneIndex& other) const {
+        return (cell_id == other.cell_id) && (level == other.level);
+      }
+      bool operator!=(const SceneIndex& other) const {
+        return !(*this == other);
+      }
+      bool operator<(const SceneIndex& other) const {
+        if constexpr (LEVEL_MAJOR) {
+          if (level == other.level) return cell_id < other.cell_id;
+          return level < other.level;
+        } else {
+          if (cell_id == other.cell_id) return level < other.level;
+          return cell_id < other.cell_id;
+        }
+      }
+    };
+
+   public:
+    ~SceneCleanupIndex() {
+      // Explicitly delete scenes in reverse creation order (we don't get a
+      // guarantee of this elsewhere from STL in erase or upon destruction)
+      DeleteLevels(0, 0);
+    }
+
+    int size() const { return static_cast<int>(scene_refs_.size()); }
+
+    void insert(DeletingSceneRef&& ref) {
+      static int counter = 0;
+      level_major_.emplace(SceneIndex<true>(ref.cell_id, ref.level), counter);
+      cell_major_.emplace(SceneIndex<false>(ref.cell_id, ref.level), counter);
+      scene_refs_.emplace(counter++, std::move(ref));
+    }
+
+    // Deletes all scenes ABOVE those at the specified cell_id and level when
+    // sorted in level major order.
+    void DeleteLevels(CellId cell_id, Level level) {
+      auto end = level_major_.upper_bound(SceneIndex<true>(cell_id, level));
+      if (end == level_major_.end()) return;
+      // Iterate through the scenes, clearing them from scene_refs_ and clearing
+      // matching groups in level_major_ in reverse order
+      SceneIndex<false> prev_index(-1, -1);
+      for (auto scene = level_major_.rbegin();
+           scene != std::make_reverse_iterator(end); ++scene) {
+        DeletingSceneRef& ref = scene_refs_.find(scene->second)->second;
+        SceneIndex<false> index(ref.cell_id, ref.level);
+        if (index != prev_index) cell_major_.erase(index);
+        scene_refs_.erase(scene->second);
+        prev_index = index;
+      }
+      level_major_.erase(end, level_major_.end());
+    }
+
+    // Deletes all scenes ABOVE AND INCLUDING those at the specified cell_id and
+    // level when sorted in cell major order.
+    void DeleteCells(CellId cell_id, Level level) {
+      auto end = cell_major_.lower_bound(SceneIndex<false>(cell_id, level));
+      if (end == cell_major_.end()) return;
+      SceneIndex<true> prev_index(-1, -1);
+      for (auto scene = cell_major_.rbegin();
+           scene != std::make_reverse_iterator(end); ++scene) {
+        DeletingSceneRef& ref = scene_refs_.find(scene->second)->second;
+        SceneIndex<true> index(ref.cell_id, ref.level);
+        if (index != prev_index) level_major_.erase(index);
+        scene_refs_.erase(scene->second);
+        prev_index = index;
+      }
+      cell_major_.erase(end, cell_major_.end());
+    }
+
+   private:
+    std::multimap<SceneIndex<true>, int> level_major_;
+    std::multimap<SceneIndex<false>, int> cell_major_;
+    std::map<int, DeletingSceneRef> scene_refs_;
+  };
 
   Stage& GetStage(Index index) {
     auto stage_iter = stages_.find(index.stage_);
@@ -217,9 +271,8 @@ class StageGraph : public util::NonCopyable {
   }
 
   std::unordered_map<std::string, Stage> stages_;
-  // A multimap as multiple stages can have matching cells with matching levels.
   // This declaration must follow stages_ for loan destruction order.
-  std::multimap<CellThenLevel, DeletingSceneRef> scenes_by_level_;
+  SceneCleanupIndex cleanup_index_;
 };
 
 template <typename STATIC_C, typename C>
@@ -248,10 +301,9 @@ class IndexStageGraph : public util::NonCopyable {
   void GoIndex(const GraphIndex& index) {
     CHECK(!index_.invalid()) << "Index invalid.";
     if (!retained().invalid()) {
-      GraphStage& stage = stage_graph_->GetStage(index_);
-      stage.DeleteScenesAboveLevel(actual_cell_, index.level_);
+      stage_graph_->cleanup_index_.DeleteCells(actual_cell_, index.level_);
     } else {
-      stage_graph_->DeleteScenesAboveLevel(index.cell_id_, index.level_);
+      stage_graph_->cleanup_index_.DeleteLevels(index.cell_id_, index.level_);
     }
     ++actual_cell_;
     index_ = index;
@@ -314,8 +366,7 @@ class IndexStageGraph : public util::NonCopyable {
       } else {
         cell.emplace(index_.level_, std::move(update));
       }
-      stage_graph_->scenes_by_level_.emplace(
-          StageGraph<STATIC_C, C>::CellThenLevel(actual_cell_, index_.level_),
+      stage_graph_->cleanup_index_.insert(
           StageGraph<STATIC_C, C>::DeletingSceneRef(
               stage.MakeLoanForDeletingReference(), actual_cell_,
               index_.level_));
