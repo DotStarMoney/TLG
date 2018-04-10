@@ -2,10 +2,10 @@
 #define TLG_LIB_INDEXSTAGEGRAPH_H_
 
 #include <functional>
-#include <map>
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 #include "absl/strings/string_view.h"
 #include "glog/logging.h"
@@ -19,9 +19,7 @@ class IndexStageGraph;
 template <typename STATIC_C, typename C>
 class StageGraph : public util::NonCopyable {
   friend class IndexStageGraph<STATIC_C, C>;
-  static constexpr int kInitialIndexCell = 1;
   static constexpr int kInitialIndexLevel = 0;
-  typedef uint32_t CellId;
   typedef uint32_t Level;
 
  public:
@@ -68,10 +66,12 @@ class StageGraph : public util::NonCopyable {
  private:
   class Scene : util::Lender {
    public:
-    Scene() {}
-    Scene(std::unique_ptr<C> content) : content_(std::move(content)) {}
-    Scene(util::Loan<Scene>&& basis, std::unique_ptr<C> content)
-        : basis_(std::move(basis)), content_(std::move(content)) {}
+    Scene(Level level, std::unique_ptr<C> content)
+        : level_(level), content_(std::move(content)) {}
+    Scene(Level level, util::Loan<Scene>&& basis, std::unique_ptr<C> content)
+        : level_(level),
+          basis_(std::move(basis)),
+          content_(std::move(content)) {}
 
     // This should invalidate the content_ ptr
     Scene(Scene&& other)
@@ -87,8 +87,10 @@ class StageGraph : public util::NonCopyable {
 
     const C* content() const { return content_.get(); }
     const Scene* basis() const { return basis_.get(); }
+    Level level() const { return level_; }
 
    private:
+    const Level level_;
     util::Loan<Scene> basis_;
     std::unique_ptr<C> content_;
   };
@@ -149,119 +151,10 @@ class StageGraph : public util::NonCopyable {
       stack.erase(level);
       if (stack.empty()) cells_.erase(stack_i);
     }
-    // The key for this stage in the map that contains it.
+
     std::string name_;
-    std::map<CellId, std::map<Level, Scene>> cells_;
+    std::vector<Scene> scenes_;
     std::unique_ptr<STATIC_C> static_content_;
-  };
-
-  // A reference to a scene that deletes the scene when the reference destructs.
-  struct DeletingSceneRef : public util::NonCopyable {
-    util::Loan<Stage> stage;
-    CellId cell_id;
-    Level level;
-
-    DeletingSceneRef(util::Loan<Stage>&& stage, CellId cell_id, Level level)
-        : stage(std::move(stage)), cell_id(cell_id), level(level) {}
-
-    DeletingSceneRef(DeletingSceneRef&& other)
-        : stage(std::move(other.stage)),
-          cell_id(other.cell_id),
-          level(other.level) {}
-
-    DeletingSceneRef& operator=(DeletingSceneRef&& other) {
-      stage = std::move(other.stage);
-      cell_id = other.cell_id;
-      level = other.level;
-      return *this;
-    }
-
-    virtual ~DeletingSceneRef() {
-      if (stage.get() != nullptr) stage->DeleteScene(cell_id, level);
-    }
-  };
-
-  class SceneCleanupIndex {
-    template <bool LEVEL_MAJOR>
-    struct SceneIndex {
-      CellId cell_id;
-      Level level;
-      SceneIndex& operator=(const SceneIndex& x) = default;
-      SceneIndex(CellId cell_id, Level level)
-          : cell_id(cell_id), level(level) {}
-      bool operator==(const SceneIndex& other) const {
-        return (cell_id == other.cell_id) && (level == other.level);
-      }
-      bool operator!=(const SceneIndex& other) const {
-        return !(*this == other);
-      }
-      bool operator<(const SceneIndex& other) const {
-        if constexpr (LEVEL_MAJOR) {
-          if (level == other.level) return cell_id < other.cell_id;
-          return level < other.level;
-        } else {
-          if (cell_id == other.cell_id) return level < other.level;
-          return cell_id < other.cell_id;
-        }
-      }
-    };
-
-   public:
-    ~SceneCleanupIndex() {
-      // Explicitly delete scenes in reverse creation order (we don't get a
-      // guarantee of this elsewhere from STL in erase or upon destruction)
-      DeleteLevels(0, 0);
-    }
-
-    int size() const { return static_cast<int>(scene_refs_.size()); }
-
-    void insert(DeletingSceneRef&& ref) {
-      static int counter = 0;
-      level_major_.emplace(SceneIndex<true>(ref.cell_id, ref.level), counter);
-      cell_major_.emplace(SceneIndex<false>(ref.cell_id, ref.level), counter);
-      scene_refs_.emplace(counter++, std::move(ref));
-    }
-
-    // Deletes all scenes ABOVE those at the specified cell_id and level when
-    // sorted in level major order.
-    void DeleteLevels(CellId cell_id, Level level) {
-      auto end = level_major_.upper_bound(SceneIndex<true>(cell_id, level));
-      if (end == level_major_.end()) return;
-      // Iterate through the scenes, clearing them from scene_refs_ and clearing
-      // matching groups in level_major_ in reverse order
-      SceneIndex<false> prev_index(-1, -1);
-      for (auto scene = level_major_.rbegin();
-           scene != std::make_reverse_iterator(end); ++scene) {
-        DeletingSceneRef& ref = scene_refs_.find(scene->second)->second;
-        SceneIndex<false> index(ref.cell_id, ref.level);
-        if (index != prev_index) cell_major_.erase(index);
-        scene_refs_.erase(scene->second);
-        prev_index = index;
-      }
-      level_major_.erase(end, level_major_.end());
-    }
-
-    // Deletes all scenes ABOVE AND INCLUDING those at the specified cell_id and
-    // level when sorted in cell major order.
-    void DeleteCells(CellId cell_id, Level level) {
-      auto end = cell_major_.lower_bound(SceneIndex<false>(cell_id, level));
-      if (end == cell_major_.end()) return;
-      SceneIndex<true> prev_index(-1, -1);
-      for (auto scene = cell_major_.rbegin();
-           scene != std::make_reverse_iterator(end); ++scene) {
-        DeletingSceneRef& ref = scene_refs_.find(scene->second)->second;
-        SceneIndex<true> index(ref.cell_id, ref.level);
-        if (index != prev_index) level_major_.erase(index);
-        scene_refs_.erase(scene->second);
-        prev_index = index;
-      }
-      cell_major_.erase(end, cell_major_.end());
-    }
-
-   private:
-    std::multimap<SceneIndex<true>, int> level_major_;
-    std::multimap<SceneIndex<false>, int> cell_major_;
-    std::map<int, DeletingSceneRef> scene_refs_;
   };
 
   Stage& GetStage(Index index) {
@@ -271,10 +164,8 @@ class StageGraph : public util::NonCopyable {
   }
 
   std::unordered_map<std::string, Stage> stages_;
-  // This declaration must follow stages_ for loan destruction order.
-  SceneCleanupIndex cleanup_index_;
 };
-
+/*
 template <typename STATIC_C, typename C>
 class IndexStageGraph : public util::NonCopyable {
   typedef typename StageGraph<STATIC_C, C>::Scene GraphScene;
@@ -405,5 +296,7 @@ class IndexStageGraph : public util::NonCopyable {
   CellId actual_cell_;
   GraphIndex retained_index_;
 };
+*/
+
 }  // namespace tlg_lib
 #endif  // TLG_LIB_INDEXSTAGEGRAPH_H_
