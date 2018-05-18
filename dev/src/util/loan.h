@@ -68,7 +68,7 @@ class Loan : public NonCopyable {
       : lender_ref_(lender_ref), loaned_ptr_(loaned_ptr) {
     ++(*lender_ref_);
   }
-  std::atomic<int>* lender_ref_;
+  std::atomic<int> mutable* lender_ref_;
   T* loaned_ptr_;
 };
 
@@ -83,8 +83,13 @@ class Lender : public util::NonCopyable {
     return Loan<T>(&ref_, reinterpret_cast<T*>(this));
   }
 
+  template <class T>
+  Loan<T> MakeLoan(T* source) const {
+    return Loan<T>(&ref_, source);
+  }
+
   void TerminateLoans() const {
-    CHECK_EQ(ref_.load(), 0) << "Loans remained when terminating loans.";
+    CHECK_EQ(ref_.load(), 0) << "Loans remained when terminating.";
   }
 
  private:

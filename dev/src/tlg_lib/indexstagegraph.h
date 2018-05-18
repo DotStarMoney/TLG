@@ -8,11 +8,89 @@
 #include <vector>
 
 #include "absl/strings/string_view.h"
+#include "base/static_type_assert.h"
 #include "glog/logging.h"
 #include "util/loan.h"
 #include "util/noncopyable.h"
 
 namespace tlg_lib {
+
+template <typename SHARED_C, typename C>
+class StageGraph : public util::NonCopyable {
+  typedef uint32_t VersionId;
+
+ public:
+  StageGraph() {}
+
+ private:
+  class Version : public util::NonCopyable {
+   public:
+    template <typename StringT>
+    Version(VersionId base, StringT&& orig_stage) : base_vers_(basis) {
+      AddStage(std::forward<StringT>(orig_stage));
+    }
+
+    ~Version() {
+      // delete stages_ versions
+    }
+
+    template <typename StringT>
+    void AddStage(StringT&& stage) {
+      base::type_assert::AssertIsConvertibleTo<std::string, StringT>();
+      stage_graph_.push_back(std::forward<StringT>(stage));
+    }
+
+    void AddLink(VersionId version) { aux_links_.push_back(version); }
+    VersionId basis() const { return base_vers_; }
+    const std::vector<VersionId>& links() const { return aux_links_; }
+
+   private:
+    const VersionId base_vers_;
+    std::vector<VersionId> aux_links_;
+    std::vector<std::string> stages_;
+  };
+
+  class Scene : public util::Lender {};
+
+  class Stage : public util::Lender {
+   public:
+    Stage(std::unique_ptr<SHARED_C> shared_content, Scene&& base_scene) {
+      UpdateSharedContent(shared_content);
+      scenes_.insert(0, base_scene);
+    }
+
+    Scene& GetScene(VersionId vers) {
+      std::unordered_map<VersionId, Scene>::iterator scene_i;
+      for (;;) {
+        scene_i = scenes_.find(vers);
+        if (scene_i != scenes_.end()) break;
+
+        auto vers_i = version_graph_.find(vers);
+        CHECK_NE(vers_i, version_graph_.end())
+            << "Version " << vers << " does not exist.";
+        vers = vers_i->second.basis();
+      }
+      return scene_i->second;
+    }
+
+    void UpdateSharedContent(std::unique_ptr<SHARED_C> shared_content) {
+      shared_content_.reset(shared_content);
+    }
+
+    util::Loan<SHARED_C> shared_content() const {
+      return MakeLoan<SHARED_C>(shared_content_.get()));
+    }
+
+   private:
+    std::unique_ptr<SHARED_C> shared_content_;
+    std::unordered_map<VersionId, Scene> scenes_;
+  };
+
+  std::unordered_map<VersionId, Version> version_graph_;
+  std::unordered_map<std::string, Stage> stage_graph_;
+};
+
+/*
 template <typename STATIC_C, typename C>
 class IndexStageGraph;
 
@@ -20,50 +98,42 @@ template <typename STATIC_C, typename C>
 class StageGraph : public util::NonCopyable {
   friend class IndexStageGraph<STATIC_C, C>;
   static constexpr int kInitialIndexLevel = 0;
-  typedef uint32_t Level;
+  typedef int32_t Level;
 
  public:
-  StageGraph() {}
-
   static std::unique_ptr<StageGraph<STATIC_C, C>> Create() {
-    return std::make_unique<StageGraph<STATIC_C, C>>();
+    return std::unique_ptr<StageGraph<STATIC_C, C>>(
+        new StageGraph<STATIC_C, C>());
   }
+
+  StageGraph(StageGraph&& stage_graph)
+      : stage_order_(std::move(stage_graph.stage_order_)),
+        stages_(std::move(stage_graph.stages_)) {}
 
   void AddStage(const std::string& name,
                 std::unique_ptr<STATIC_C> static_content,
                 std::unique_ptr<C> content) {
     auto stage_insert =
-        stages_.emplace(name, Stage(name, std::move(static_content)));
+        stages_.emplace(name, Stage(name, std::move(static_content),
+                                    static_cast<int>(stage_order_.size())));
     CHECK(stage_insert.second) << "Stage '" << name << "' already exists.";
     Stage& stage = stage_insert.first->second;
-    auto& cell =
-        stage.cells_.emplace(0, std::map<Level, Scene>()).first->second;
-    cell.emplace(0, Scene(std::move(content)));
-    cleanup_index_.insert(
-        DeletingSceneRef(stage.MakeLoanForDeletingReference(), 0, 0));
+    stage_order_.emplace_back(stage.MakeStageLoan());
+    stage.scenes_.emplace_back(0, std::move(content));
   }
 
-  // For testing. Returns the number of scenes across all stages and cells.
-  int size() const { return cleanup_index_.size(); }
-
-  class Index {
-    friend class IndexStageGraph<STATIC_C, C>;
-    friend class StageGraph<STATIC_C, C>;
-
-   public:
-    Index()
-        : stage_(""), cell_id_(kInitialIndexCell), level_(kInitialIndexLevel) {}
-    bool invalid() const { return stage_.empty(); }
-
-   private:
-    void Invalidate() { stage_.clear(); }
-
-    std::string stage_;
-    CellId cell_id_;
-    Level level_;
-  };
+  // For testing: total number of scenes
+  int size() const {
+    int scenes = 0;
+    for (const auto& stage_i : stages_) {
+      scenes += static_cast<int>(stage_i.second.scenes_.size());
+    }
+    return scenes;
+  }
 
  private:
+  StageGraph() {}
+
   class Scene : util::Lender {
    public:
     Scene(Level level, std::unique_ptr<C> content)
@@ -76,7 +146,8 @@ class StageGraph : public util::NonCopyable {
     // This should invalidate the content_ ptr
     Scene(Scene&& other)
         : basis_(std::move(other.basis_)),
-          content_(std::move(other.content_)) {}
+          content_(std::move(other.content_)),
+          level_(other.level_) {}
 
     util::Loan<Scene> MakeBasis() { return MakeLoan<Scene>(); }
 
@@ -96,122 +167,175 @@ class StageGraph : public util::NonCopyable {
   };
 
   class Stage : public util::Lender {
+    friend class StageGraph<STATIC_C, C>;
+
    public:
-    Stage(absl::string_view name, std::unique_ptr<STATIC_C> static_content)
-        : name_(name), static_content_(std::move(static_content)) {}
+    Stage(absl::string_view name, std::unique_ptr<STATIC_C> static_content,
+          int order_index)
+        : name_(name),
+          static_content_(std::move(static_content)),
+          order_index_(order_index) {}
 
     Stage(Stage&& other)
         : name_(std::move(other.name_)),
-          cells_(std::move(other.cells_)),
-          static_content_(std::move(other.static_content_)) {
+          static_content_(std::move(other.static_content_)),
+          scenes_(std::move(other.scenes_)),
+          order_index_(other.order_index_) {
       // Invalidate Stage "other"
-      other.name_.clear();
     }
 
-    util::Loan<Stage> MakeLoanForDeletingReference() {
-      CHECK(!name_.empty()) << "Stage invalidated, was it moved?";
+    ~Stage() {
+      // To ensure we don't screw up any of the loans given to higher scenes
+      // from lower scenes, we must explicitly delete things in this order.
+      while (!scenes_.empty()) scenes_.pop_back();
+    }
+
+    Scene& GetScene(int level_lo, int level_hi) {
+      CHECK(!name_.empty()) << "Stage invalidated.";
+      CHECK_GE(level_lo, 0);
+      CHECK_GE(level_hi, level_lo);
+      if (max_level() >= level_hi) return scenes_.back();
+      return GetSceneIndexAtOrBelow(level_lo);
+    }
+
+    int max_level() const { return scenes_.back().level(); }
+
+    STATIC_C* static_content() const { return static_content_.get(); }
+
+   private:
+    std::string name_;
+    std::unique_ptr<STATIC_C> static_content_;
+    std::vector<Scene> scenes_;
+    int order_index_;
+
+    util::Loan<Stage> MakeStageLoan() {
+      CHECK(!name_.empty()) << "Stage invalidated.";
       return MakeLoan<Stage>();
     }
 
-    Scene& GetScene(Index index) {
-      CHECK(!name_.empty()) << "Stage invalidated, was it moved?";
-
-      auto cell_iter = cells_.lower_bound(index.cell_id_);
-      if ((cell_iter == cells_.end()) || (cell_iter->first > index.cell_id_)) {
-        --cell_iter;
+    // Basically an implementation of binary search that fits our
+    // calling/level comparison semantics
+    Scene& GetSceneIndexAtOrBelow(int level) {
+      CHECK(!name_.empty()) << "Stage invalidated.";
+      int lo = 0;
+      int hi = static_cast<int>(scenes_.size() - 1);
+      while ((hi - lo) > 1) {
+        int mid = (lo + hi) >> 1;
+        if (scenes_[mid].level() > level) {
+          hi = mid;
+          continue;
+        } else if (scenes_[mid].level() < level) {
+          lo = mid;
+          continue;
+        }
+        return scenes_[mid];
       }
-      CHECK(cell_iter != cells_.end())
-          << "Cell id lower than that of all cells in stage.";
-
-      std::map<Level, Scene>& cell = cell_iter->second;
-      auto scene_iter = cell.lower_bound(index.level_);
-      if ((scene_iter == cell.end()) || (scene_iter->first > index.level_)) {
-        --scene_iter;
-      }
-      CHECK(scene_iter != cell.end())
-          << "Index level lower than that of all scenes in cell.";
-
-      return scene_iter->second;
+      if (scenes_[hi].level() == level) return scenes_[hi];
+      return scenes_[lo];
     }
-
-    // Delete a scene at the specified level from the cell at the specified id.
-    // If deleting this scene empties the cell, delete the cell as well.
-    void DeleteScene(CellId cell_id, Level level) {
-      CHECK(!name_.empty()) << "Stage invalidated, was it moved?";
-      auto stack_i = cells_.find(cell_id);
-      CHECK(stack_i != cells_.end())
-          << "When deleting scene, cell_id: " << cell_id
-          << " isn't valid for stage: " << name_;
-      auto& stack = stack_i->second;
-      // Sanity check to stop hard to find bugs considering a failed erase
-      // doesn't report anything back.
-      CHECK(stack.find(level) != stack.end())
-          << "When deleting scene, level: " << level
-          << " isn't valid for cell_id: " << cell_id << " in stage: " << name_;
-      stack.erase(level);
-      if (stack.empty()) cells_.erase(stack_i);
-    }
-
-    std::string name_;
-    std::vector<Scene> scenes_;
-    std::unique_ptr<STATIC_C> static_content_;
   };
 
-  Stage& GetStage(Index index) {
-    auto stage_iter = stages_.find(index.stage_);
-    CHECK(stage_iter != stages_.end()) << "Index points to non-existant stage.";
+  Stage& GetStage(const std::string& stage) {
+    auto stage_iter = stages_.find(stage);
+    CHECK(stage_iter != stages_.end()) << "Stage does not exist.";
     return stage_iter->second;
   }
 
+  void DeleteScenesAboveLevel(Level level) {
+    CHECK_GE(level, 0) << "Cannot delete at or below level 0.";
+    for (int s = static_cast<int>(stage_order_.size() - 1); s >= 0; --s) {
+      auto& stage = *stage_order_[s].get();
+      if (stage.max_level() <= level) return;
+      while (stage.max_level() > level) stage.scenes_.pop_back();
+    }
+  }
+
+  void AddScene(Stage& stage, int level, util::Loan<Scene> basis,
+                std::unique_ptr<C> content) {
+    CHECK_GT(level, stage.max_level()) << "New scene predates latest in stage.";
+    stage.scenes_.emplace_back(level, std::move(basis), std::move(content));
+    // Adjust stage position in order: swap with stages above us until sorted
+    // order is maintained
+    while ((stage.order_index_ < (stage_order_.size() - 1)) &&
+           (stage_order_[stage.order_index_ + 1]->max_level() < level)) {
+      Stage& higher_stage = *(stage_order_[stage.order_index_ + 1].get());
+      std::swap(stage_order_[higher_stage.order_index_],
+                stage_order_[stage.order_index_]);
+      --higher_stage.order_index_;
+      ++stage.order_index_;
+    }
+  }
+
   std::unordered_map<std::string, Stage> stages_;
+  // Sorted order of stages by highest level from least to greatest
+  std::vector<util::Loan<Stage>> stage_order_;
 };
-/*
+
 template <typename STATIC_C, typename C>
 class IndexStageGraph : public util::NonCopyable {
   typedef typename StageGraph<STATIC_C, C>::Scene GraphScene;
   typedef typename StageGraph<STATIC_C, C>::Stage GraphStage;
   typedef typename StageGraph<STATIC_C, C>::Level Level;
-  typedef typename StageGraph<STATIC_C, C>::CellId CellId;
 
  public:
-  typedef typename StageGraph<STATIC_C, C>::Index GraphIndex;
+  struct Index {
+    Index() : level(0) {}
+    Index(const std::string& stage, Level level) : stage(stage), level(level) {}
 
-  IndexStageGraph(std::unique_ptr<StageGraph<STATIC_C, C>> stage_graph)
-      : stage_graph_(std::move(stage_graph)),
-        actual_cell_(StageGraph<STATIC_C, C>::kInitialIndexCell) {
-    // An unreachable cell as the base state
-    index_.cell_id_ = StageGraph<STATIC_C, C>::kInitialIndexCell - 1;
-  }
+    std::string stage;
+    Level level;
+    bool valid() const { return !stage.empty(); }
+    void Invalidate() { stage.clear(); }
+  };
+
+  IndexStageGraph(std::unique_ptr<StageGraph<STATIC_C, C>> graph_)
+      : graph_(std::move(graph_)),
+        visiting_("", 1),
+        cur_(1),
+        cur_last_jump_(1) {}
+
+  IndexStageGraph(IndexStageGraph&& index_graph)
+      : graph_(std::move(index_graph.graph_)),
+        visiting_(index_graph.visiting_),
+        cur_(index_graph.cur_),
+        cur_last_jump_(index_graph.cur_last_jump_),
+        retained_(index_graph.retained_) {}
 
   virtual ~IndexStageGraph() {}
 
   // Go to a different stage, automatically determining the scene.
-  void GoStage(const std::string& stage) { index_.stage_ = stage; }
+  void GoStage(const std::string& stage) { visiting_.stage = stage; }
 
   // Go to a specific scene index.
-  void GoIndex(const GraphIndex& index) {
-    CHECK(!index_.invalid()) << "Index invalid.";
-    if (!retained().invalid()) {
-      stage_graph_->cleanup_index_.DeleteCells(actual_cell_, index.level_);
+  void GoIndex(const Index& index) {
+    CHECK(visiting_.valid()) << "Index invalid.";
+    CHECK(index.valid()) << "Jump index invalid.";
+    if (retained_.valid()) {
+      // Delete everything at the current level
+      graph_->DeleteScenesAboveLevel(cur_ - 1);
     } else {
-      stage_graph_->cleanup_index_.DeleteLevels(index.cell_id_, index.level_);
+      // Delete everything above the level to which we're jumping
+      graph_->DeleteScenesAboveLevel(index.level);
+      cur_ = index.level;
     }
-    ++actual_cell_;
-    index_ = index;
+    cur_last_jump_ = cur_;
+    visiting_ = index;
   }
 
   absl::string_view stage() const {
-    CHECK(!index_.invalid()) << "Index invalid.";
-    return index_.stage_;
+    CHECK(visiting_.valid()) << "Index invalid.";
+    return visiting_.stage;
   }
 
   // Starting with the current scene, resolver_fn will be called on the content
   // of each scene in the chain of bases ending at the first empty basis.
   void GetStageContent(std::function<void(const C* content)> resolver_fn,
                        int32_t max_depth = -1) const {
-    CHECK(!index_.invalid()) << "Index invalid.";
-    const GraphScene* scene =
-        &(stage_graph_->GetStage(index_).GetScene(index_));
+    CHECK(visiting_.valid()) << "Index invalid.";
+    // Get the scene either at the visiting level, or at a newer level if we've
+    // updated it since.
+    const GraphScene* scene = &(graph_->GetStage(visiting_.stage)
+                                    .GetScene(visiting_.level, cur_last_jump_));
     while (scene != nullptr) {
       resolver_fn(scene->content());
       scene = scene->basis();
@@ -220,10 +344,24 @@ class IndexStageGraph : public util::NonCopyable {
   }
 
   // Get the static content of a stage
-  const STATIC_C* GetStageStaticContent() const {
-    CHECK(!index_.invalid()) << "Index invalid.";
-    return stage_graph_->GetStage(index_).static_content_.get();
+  STATIC_C* GetStageStaticContent() {
+    CHECK(visiting_.valid()) << "Index invalid.";
+    return stage_graph_->GetStage(index_).static_content();
   }
+
+  // Retain the index of the current scene. If already retaining when called,
+  // the old retained index is discarded and the current level will not increase
+  const Index& Retain() {
+    CHECK(visiting_.valid()) << "Index invalid.";
+    if (!retained_.valid()) ++cur_;
+    retained_ = visiting_;
+    return retained_;
+  }
+
+  const Index& retained() const {
+    CHECK(!index_.invalid()) << "Index invalid.";
+    return retained_index_;
+  };
 
   // Update the content of a scene, potentially creating a new scene and
   // assigning the index to it.
@@ -237,66 +375,37 @@ class IndexStageGraph : public util::NonCopyable {
   // If release is true, the current retained index will be invalidated.
   void UpdateStageContent(std::unique_ptr<C> update, bool link = false,
                           bool release = false) {
-    CHECK(!index_.invalid()) << "Index invalid.";
-    GraphStage& stage = stage_graph_->GetStage(index_);
-    auto cell_iter = stage.cells_.find(actual_cell_);
-    if (cell_iter == stage.cells_.end()) {
-      cell_iter =
-          stage.cells_.emplace(actual_cell_, std::map<Level, GraphScene>())
-              .first;
+    CHECK(visiting_.valid()) << "Index invalid.";
+    GraphStage& stage = graph_->GetStage(visiting_.stage);
+    if (stage.max_level() == cur_) {
+      GraphScene* scene = &(stage.GetScene(visiting_.level, cur_last_jump_));
+      scene->ResetContent(std::move(update));
+      return;
     }
-    auto& cell = cell_iter->second;
-    auto scene_iter = cell.find(index_.level_);
 
-    if (scene_iter == cell.end()) {
-      if (link) {
-        GraphScene& prev_scene = stage.GetScene(index_);
-        cell.emplace(
-            index_.level_,
-            GraphScene(std::move(prev_scene.MakeBasis()), std::move(update)));
-      } else {
-        cell.emplace(index_.level_, std::move(update));
-      }
-      stage_graph_->cleanup_index_.insert(
-          StageGraph<STATIC_C, C>::DeletingSceneRef(
-              stage.MakeLoanForDeletingReference(), actual_cell_,
-              index_.level_));
-    } else {
-      scene_iter->second.ResetContent(std::move(update));
-    }
-    index_.cell_id_ = actual_cell_;
+    graph_->AddScene(
+        stage, cur_,
+        link ? stage.GetScene(visiting_.level, cur_last_jump_).MakeBasis()
+             : util::Loan<GraphScene>(),
+        std::move(update));
+
     if (release) Release();
   }
 
-  // Retain the index of the current scene. If already retaining when called,
-  // the old retained index is discarded.
-  const GraphIndex& Retain() {
-    CHECK(!index_.invalid()) << "Index invalid.";
-    const Level prev_level = index_.level_;
-    if (retained().invalid()) ++index_.level_;
-    retained_index_ = index_;
-    retained_index_.level_ = prev_level;
-    return retained_index_;
-  }
-
-  const GraphIndex& retained() const {
-    CHECK(!index_.invalid()) << "Index invalid.";
-    return retained_index_;
-  };
-
  private:
+  std::unique_ptr<StageGraph<STATIC_C, C>> graph_;
+  Index visiting_;
+  Level cur_;
+  Level cur_last_jump_;
+
+  Index retained_;
+
   // Relase the retained index; asserts that an index was retained.
   void Release() {
-    CHECK(!index_.invalid()) << "Index invalid.";
-    retained_index_.Invalidate();
+    CHECK(retained_.valid()) << "Retained index invalid.";
+    retained_.Invalidate();
   }
-
-  std::unique_ptr<StageGraph<STATIC_C, C>> stage_graph_;
-  GraphIndex index_;
-  CellId actual_cell_;
-  GraphIndex retained_index_;
 };
 */
-
 }  // namespace tlg_lib
 #endif  // TLG_LIB_INDEXSTAGEGRAPH_H_
