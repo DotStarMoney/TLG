@@ -27,7 +27,7 @@ class Loan : public NonCopyable {
 
  public:
   ~Loan() {
-    // If we hae been "moved out of," we'll have nothing to decrement.
+    // If we have been "moved out of," we'll have nothing to decrement.
     if (loaned_ptr_ != nullptr) --(*lender_ref_);
   }
 

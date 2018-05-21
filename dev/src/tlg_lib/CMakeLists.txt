@@ -10,8 +10,10 @@ target_include_directories(tlg_lib_indexstagegraph INTERFACE
 	${CMAKE_CURRENT_LIST_DIR})
 target_link_libraries(tlg_lib_indexstagegraph INTERFACE
 	util_loan
+	util_deleterptr
 	util_noncopyable
 	absl::strings
+	absl::base
 	glog)
 #_______________________________________________________________________________
 #tlg_lib::indexstagegraph test
