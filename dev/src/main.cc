@@ -9,7 +9,6 @@ using retro::FbColor32;
 using retro::FbGfx;
 using retro::FbImg;
 
-using tlg_lib::IndexStageGraph;
 using tlg_lib::StageGraph;
 
 

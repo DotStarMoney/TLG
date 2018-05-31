@@ -9,6 +9,6 @@ using tlg_lib::StageGraph;
 
 
 TEST(IndexStageGraphTest, SimpleJumpWithoutRetention) {
-
+  auto graph_builder = StageGraph<int, int>::builder();
 }
 

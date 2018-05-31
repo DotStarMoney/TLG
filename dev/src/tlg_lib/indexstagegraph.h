@@ -34,7 +34,8 @@ namespace tlg_lib {
 //
 // Furthermore, we allow embedding of an index to an existing one. This way,
 // Index A can store Index B as the content of a stage, and later it or a
-// different Index can retrieve embedded Index B and replace or "jump" to it.
+// different Index can retrieve embedded Index B and replace itself or "jump" to
+// it.
 //
 // - SharedC is the type of the content shared by all Indexes to a Stage
 // - C is the type of the content that can change across Indexes
@@ -57,10 +58,9 @@ class StageGraph : public util::Lender {
         : vers_(vers),
           base_vers_(basis),
           parent_count_(0),  // A new version cannot have a parent.
-          refs_(1),          // If we create a version, it's assumed
-                             //     either an Index or EmbeddedIndex
+          refs_(1),          // If we create a version, it's assumed an Index
                              //     references it.
-          pinning_refs_(1),  // Ditto (but Indexes only)
+          pinning_refs_(1),  // Ditto.
           stage_graph_(stage_graph) {}
 
     Version(Version &&version)
@@ -338,7 +338,7 @@ class StageGraph : public util::Lender {
   // version as accessible. We finish by deleting all inaccessible versions.
   //
   void Compact() {
-    // Make a set of all versions. Versions that persist in this graph after the
+    // Make a set of all versions. Versions that persist in this set after the
     // frontier search are to be deleted.
     std::set<VersionId> delete_vers;
     for (const auto &version_i : version_graph_) {
@@ -370,7 +370,8 @@ class StageGraph : public util::Lender {
         persue.pop_back();
 
         for (const auto &link_i : v->links()) {
-          persue.push_back({link_i->first, accessible});
+          // Don't try to visit version 0
+          if (link_i->first != 0) persue.push_back({link_i->first, accessible});
         }
         // Don't try to visit version 0
         if (v->vers() != 0) persue.push_back({v->base(), accessible});
@@ -445,6 +446,8 @@ class StageGraph : public util::Lender {
     friend class StageGraph<SharedC, C>;
 
    public:
+    Builder(Builder &&builder) { fragments_ = std::move(builder.fragments); }
+
     template <typename StringT>
     Builder &push(StringT &&name, SharedC &&shared_content, C &&content) {
       base::type_assert::AssertIsConvertibleTo<std::string, StringT>();
@@ -488,7 +491,8 @@ class StageGraph : public util::Lender {
                   VersionId dst_vers)
         : stage_(stage), src_vers_(src_vers), dst_vers_(dst_vers) {}
 
-    // src_vers_ and stage_ exist entirely for sanity checking
+    // src_vers_ and stage_ exist entirely for sanity checking of embed/unembed
+    // calls.
     std::string stage_;
     VersionId src_vers_;
     VersionId dst_vers_;
@@ -568,7 +572,7 @@ class StageGraph : public util::Lender {
     }
 
     // Sets the content of the current stage. Since views of the underlying
-    // StageGraph are treated as completely unique between indicies, a
+    // StageGraph are treated as completely unique between indices, a
     // considerable amount of work may have to be done to provide a separate
     // view of the underlying graph to the index updating the content.
     //
@@ -614,6 +618,9 @@ class StageGraph : public util::Lender {
         }
         stage_graph_->frontier.insert(new_vers);
       } else {
+        // We can reuse our current version since nobody else references it,
+        // but we'll still need to add a new scene. Tell the version about the
+        // stage with this scene.
         v.AddStage(std::string(stage_->name_));
       }
 
@@ -624,10 +631,15 @@ class StageGraph : public util::Lender {
     }
 
     // Consume a different index, "embedding" it in this index. This internally
-    // sets the consumed index to be a descendant of
+    // sets the version of the consumed index to be a descendant of the version
+    // in the calling index. We don't need to compact since by definition, this
+    // index's version is accessible, therefore the embedded index version is
+    // also accessible as it is our descendant.
     EmbeddedIndex Embed(Index &&index) {
       CHECK(valid()) << "Index invalid.";
       CHECK_NE(index, this) << "Cannot embed index within itself.";
+      CHECK_GE(index.vers_, vers_)
+          << "Embedding will introduce cycle in version graph.";
 
       {
         std::shared_lock<std::mutex> slock(stage_graph_->m_);
@@ -639,6 +651,9 @@ class StageGraph : public util::Lender {
         std::unique_lock<std::mutex> lock(v.m_, std::defer_lock);
         std::lock(embed_lock, lock);
 
+        // The version we embed is still "referenced," hence we don't call
+        // "dec()". However since the embeded version is now only as accessible
+        // as is this version, we unpin it.
         embed_v.unpin();
 
         // There's no point adding an edge to the version graph that starts and
@@ -653,6 +668,7 @@ class StageGraph : public util::Lender {
       return EmbeddedIndex(stage_->name_, vers_, index.vers_);
     }
 
+    // Reverse the embedding process.
     Index Unembed(const EmbeddedIndex &embedded_index) {
       CHECK(valid()) << "Index invalid.";
       CHECK_EQ(embedded_index.src_vers_, vers_)
@@ -685,6 +701,7 @@ class StageGraph : public util::Lender {
       return Index(embedded_index.dst_vers_, stage_, stage_graph_->MakeLoan());
     }
 
+    // Form a new index from this one at the same stage and version.
     Index Clone() {
       CHECK(valid()) << "Index invalid.";
       std::shared_lock<std::mutex> slock(stage_graph_->m_);
@@ -695,11 +712,15 @@ class StageGraph : public util::Lender {
       return Index(vers_, stage_, stage_graph_->MakeLoan());
     }
 
+    // Release this index, and replace ourselves with the incoming index.
     void Replace(Index &&index) {
       Release();
       *this = index;
     }
 
+    // Decrement the ref/pin in our version and run compaction. Any newly
+    // inaccessible versions resulting from this release will be removed, as
+    // will any scenes at those versions.
     void Release() {
       if (!valid()) return;
       invalidate();
@@ -714,9 +735,12 @@ class StageGraph : public util::Lender {
 
    private:
     VersionId vers_;
+
+    // We're safe to keep a pointer to the stage as the StageGraph's map of
+    // stages won't be modified after construction.
     Stage *stage_;
 
-    mutable util::Loan<StageGraph> stage_graph_;
+    util::Loan<StageGraph> stage_graph_;
   };
 
  private:
