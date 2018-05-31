@@ -56,7 +56,7 @@ class StageGraph : public util::Lender {
 
     Version(VersionId vers, VersionId base, StageGraph *const stage_graph)
         : vers_(vers),
-          base_vers_(basis),
+          base_vers_(base),
           parent_count_(0),  // A new version cannot have a parent.
           refs_(1),          // If we create a version, it's assumed an Index
                              //     references it.
@@ -77,11 +77,11 @@ class StageGraph : public util::Lender {
       // inter-scene loans
       for (const auto &stage : in_stages_) {
         auto &stages_i = stage_graph_->stages_.find(stage);
-        CHECK_NE(stages_i, stage_graph_->stages_.end())
+        CHECK(stages_i != stage_graph_->stages_.end())
             << "While deleting version " << vers_
             << ", tried to delete in-stage '" << stage
             << "' which does not exist.";
-        stages_i.second->DeleteScene(vers_);
+        stages_i->second.DeleteScene(vers_);
       }
       // Any children of this version just lost a parent :'(
       for (const auto &link_i : links_) {
@@ -133,14 +133,16 @@ class StageGraph : public util::Lender {
     // version DAG.
     void IncLink(VersionId link_vers) {
       auto &link_i = links_.find(link_vers);
-      if (link_i == links_.end()) link_i = links_.insert(link_vers, 0);
+      if (link_i == links_.end()) {
+        link_i = links_.emplace(std::make_pair(link_vers, 0));
+      }
       ++(link_i->second);
     }
 
     // Remove, or decrease the counter of: an edge to a ...
     void DecLink(VersionId link_vers) {
       auto &link_i = links_.find(link_vers);
-      CHECK_NE(link_i, links_.end())
+      CHECK(link_i != links_.end())
           << "Linked version " << link_vers
           << " not present in links map of version " << vers_;
       if (--(link_i->second) == 0) links_.erase(link_i);
@@ -194,6 +196,8 @@ class StageGraph : public util::Lender {
         : basis_(std::move(scene.basis_)),
           content_(std::move(scene.content_)) {}
 
+    Scene(C &&content) : content_(content) {}
+
     // The scene from which this scene was created. Can be nullptr if we choose
     // not to keep track of that information.
     util::Loan<Scene> basis_;
@@ -208,39 +212,46 @@ class StageGraph : public util::Lender {
 
     // Universal ref so we can eat the string
     template <typename StringT>
-    Stage(StringT &&name, std::unique_ptr<SharedC> shared_content,
-          Scene &&base_scene, StageGraph *const graph)
+    Stage(StringT &&name, SharedC &&shared_content, Scene &&base_scene,
+          StageGraph *const graph)
         : name_(std::forward<StringT>(name)),
-          shared_content_refs_(std::make_unique<std::atomic<int>>(0)),
-          shared_content_(std::move(shared_content)),
+          shared_content_refs_(0),
+          shared_content_(shared_content),
           stage_graph_(graph) {
-      scenes_.insert(0, base_scene);
+      scenes_.emplace(std::make_pair(0, std::move(base_scene)));
     }
 
+    Stage(Stage &&stage)
+        : name_(std::move(stage.name_)),
+          shared_content_refs_(stage.shared_content_refs_.load()),
+          shared_content_(std::move(stage.shared_content_)),
+          scenes_(std::move(stage.scenes_)),
+          stage_graph_(stage.stage_graph_) {}
+
     ~Stage() {
-      CHECK_EQ(shared_content_refs_->load(), 0)
+      CHECK_EQ(shared_content_refs_.load(), 0)
           << "Cannot destruct Stage while outstanding references to it's "
              "shared content are held.";
       // We must explicitly delete scenes in this order to avoid invalidating
       // outstanding loans between scenes
       while (!scenes_.empty()) {
-        scenes_.erase(scenes_.rbegin());
+        scenes_.erase(scenes_.rbegin().base());
       }
     }
 
     void DeleteScene(VersionId vers) {
       CHECK_NE(vers, 0) << "Cannot delete version 0. Stage '" << name_ << "'.";
-      CHECK_NE(scenes_.find(vers), scenes_.end())
+      CHECK(scenes_.find(vers) != scenes_.end())
           << "Version " << vers << " does not exist in stage '" << name_
           << "'.";
       scenes_.erase(vers);
     }
 
     void AddScene(VersionId vers, Scene &&scene) {
-      CHECK_EQ(scenes_.find(vers), scenes_.end())
+      CHECK(scenes_.find(vers) == scenes_.end())
           << "Version " << vers << " already exists in stage '" << name_
           << "'.";
-      scenes_.insert(vers, base_scene);
+      scenes_.emplace(std::make_pair(vers, std::move(scene)));
     }
 
     // Scene retrieval is implemented so that getting a scene at a version that
@@ -260,7 +271,7 @@ class StageGraph : public util::Lender {
         if (scene_i != scenes_.end()) break;
 
         auto vers_i = stage_graph_->version_graph_.find(vers);
-        CHECK_NE(vers_i, stage_graph_->version_graph_.end())
+        CHECK(vers_i != stage_graph_->version_graph_.end())
             << "Version graph exhausted at version " << vers
             << " while searching in stage '" << name_ << "'.";
         at_version = version;
@@ -274,7 +285,7 @@ class StageGraph : public util::Lender {
           << "Cannot update shared content while outstanding references to the "
              "old value are held.";
       std::unique_lock<std::mutex> lock(shared_content_mu_);
-      *(shared_content_.get()) = shared_content;
+      shared_content_ = shared_content;
     }
 
     // Provide a deleter_ptr that decs the ref count to the shared content when
@@ -283,17 +294,17 @@ class StageGraph : public util::Lender {
       std::shared_lock<std::mutex> slock(shared_content_mu_);
       ++(*shared_content_refs_);
       return util::deleter_ptr<SharedC>(
-          shared_content_.get(),
+          &shared_content_,
           [refs = shared_content_refs_.get()](SharedC *c) { --(*refs); });
     }
 
-    const std::string name_;
+    std::string name_;
     mutable std::atomic<uint32_t> shared_content_refs_;
 
     // Protects only the shared content. We can give this it's own mutex as
     // shared content won't be modified when the StageGraph takes it's lock.
     std::mutex shared_content_mu_;
-    std::unique_ptr<SharedC> shared_content_;
+    SharedC shared_content_;
 
     // Mutated only when the parent StageGraph locks it's mutex.
     std::map<VersionId, Scene> scenes_;
@@ -306,13 +317,13 @@ class StageGraph : public util::Lender {
 
   Stage &GetStageOrDie(const std::string &name) {
     auto &stage_i = stages_.find(name);
-    CHECK_NE(stage_i, stages_.end()) << "Stage " << name << " not found.";
+    CHECK(stage_i != stages_.end()) << "Stage " << name << " not found.";
     return stage_i->second;
   }
 
   Version &GetVersionOrDie(VersionId vers) {
     auto &vers_i = version_graph_.find(vers);
-    CHECK_NE(vers_i, version_graph_.end())
+    CHECK(vers_i != version_graph_.end())
         << "Version " << vers << " not in version graph.";
     return vers_i->second;
   }
@@ -419,8 +430,7 @@ class StageGraph : public util::Lender {
 
  public:
   StageGraph(StageGraph &&stage_graph)
-      : m_(std::move(stage_graph.m_)),
-        version_graph_(std::move(stage_graph.version_graph_)),
+      : version_graph_(std::move(stage_graph.version_graph_)),
         frontier_(std::move(stage_graph.frontier_)),
         stages_(std::move(stage_graph.stages_)),
         vers_generator_(stage_graph.vers_generator_) {}
@@ -428,7 +438,7 @@ class StageGraph : public util::Lender {
   // Deletion order matters. See comment on version_graph_.
   ~StageGraph() {
     while (!version_graph_.empty()) {
-      version_graph_.erase(version_graph_.rbegin());
+      version_graph_.erase(version_graph_.rbegin().base());
     }
   }
 
@@ -608,7 +618,8 @@ class StageGraph : public util::Lender {
         // Create a new version
         new_vers = stage_graph_->CreateVersion();
         stage_graph_->version_graph_
-            .insert(new_vers, Version(new_vers, vers_, stage_graph_))
+            .emplace(std::make_pair(new_vers,
+                                    Version(new_vers, vers_, stage_graph_)))
             .first->second.AddStage(std::string(stage_->name_));
 
         // Update the frontier
@@ -747,14 +758,14 @@ class StageGraph : public util::Lender {
   StageGraph(Builder &builder) {
     // Insert the base version. The... "original" version.
     Version &v =
-        version_graph_.insert(0, Version(0, kNoVersion, this)).second->first;
+        version_graph_.emplace(std::make_pair(0, Version(0, kNoVersion, this)))
+            .first->second;
     for (auto &frag : builder.fragments_) {
       // Note: we copy frag.name into two different strings and then move it
       // into the version stage list for 2 string copies instead of 3.
-      stages_.insert(
-          std::string(frag.name),
-          Stage(std::string(frag.name), std::move(frag.shared_content),
-                Scene{nullptr, std::move(frag.content)}, this));
+      auto stage = Stage(std::string(frag.name), std::move(frag.shared_content),
+                         Scene(std::move(frag.content)), this);
+      stages_.emplace(std::make_pair(std::string(frag.name), std::move(stage)));
       v.AddStage(std::move(frag.name));
     }
   }
