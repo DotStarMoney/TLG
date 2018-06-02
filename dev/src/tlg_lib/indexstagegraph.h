@@ -69,7 +69,13 @@ class StageGraph : public util::Lender {
           base_vers_(version.base_vers_),
           refs_(version.refs_),
           pinning_refs_(version.pinning_refs_),
-          stage_graph_(version.stage_graph_) {}
+          stage_graph_(version.stage_graph_),
+          links_(std::move(version.links_)),
+          in_stages_(std::move(version.in_stages_)) {
+      in_stages_.clear();
+      links_.clear();
+      base_vers_ = kNoVersion;
+    }
 
     ~Version() {
       // Delete any scenes at this version in the stage map. As Versions are
@@ -88,8 +94,10 @@ class StageGraph : public util::Lender {
         Version &v = stage_graph_->GetVersionOrDie(link_i.first);
         v.parent_count_ -= link_i.second;
       }
-      Version &v = stage_graph_->GetVersionOrDie(base_vers_);
-      --(v.parent_count_);
+      if (base_vers_ != kNoVersion) {
+        Version &v = stage_graph_->GetVersionOrDie(base_vers_);
+        --(v.parent_count_);
+      }
       // We don't need to modify outgoing links to this version in other
       // versions as we'll never remove a version before its parent.
     }
@@ -99,7 +107,7 @@ class StageGraph : public util::Lender {
     void inc() { ++refs_; }
     // Decrease ...
     void dec() {
-      CHECK_NE(refs--, 0) << "Reference count underflow in version " << vers_;
+      CHECK_NE(refs_--, 0) << "Reference count underflow in version " << vers_;
     }
 
     // Increase the total count of Indexes (not embedded) that reference this
@@ -107,7 +115,8 @@ class StageGraph : public util::Lender {
     void pin() { ++pinning_refs_; }
     // Decrease ...
     void unpin() {
-      CHECK_NE(--pinning_refs, 0) << "Pin count underflow in version " << vers_;
+      CHECK_NE(pinning_refs_--, 0)
+          << "Pin count underflow in version " << vers_;
     }
 
     // Is this Version pinned in the graph? That is to say: "is there an Index
@@ -159,7 +168,7 @@ class StageGraph : public util::Lender {
     const VersionId vers_;
     // The version from which this version was created, also a child of this
     // version in the version DAG.
-    const VersionId base_vers_;
+    VersionId base_vers_;
 
     // Protects all non-const class members.
     std::mutex m_;
@@ -190,13 +199,16 @@ class StageGraph : public util::Lender {
   // chooses to rebuild the content of a stage incrementally (see
   // Index::GetContent)
   struct Scene : public util::Lender {
-    util::Loan<Scene> MakeLoan() { return MakeLoan<Scene>(); }
-
     Scene(Scene &&scene)
         : basis_(std::move(scene.basis_)),
           content_(std::move(scene.content_)) {}
 
+    util::Loan<Scene> GetLoan() { return MakeLoan<Scene>(); }
+
     Scene(C &&content) : content_(content) {}
+
+    Scene(util::Loan<Scene> basis, C &&content)
+        : basis_(std::move(basis)), content_(content) {}
 
     // The scene from which this scene was created. Can be nullptr if we choose
     // not to keep track of that information.
@@ -264,8 +276,7 @@ class StageGraph : public util::Lender {
     //
     // Return the scene and version at which we found it.
     std::pair<Scene &, VersionId> GetScene(VersionId vers) {
-      std::unordered_map<VersionId, Scene>::iterator scene_i;
-      VersionId at_version = vers;
+      std::map<VersionId, Scene>::iterator scene_i;
       for (;;) {
         scene_i = scenes_.find(vers);
         if (scene_i != scenes_.end()) break;
@@ -274,24 +285,23 @@ class StageGraph : public util::Lender {
         CHECK(vers_i != stage_graph_->version_graph_.end())
             << "Version graph exhausted at version " << vers
             << " while searching in stage '" << name_ << "'.";
-        at_version = version;
         vers = vers_i->second.base();
       }
-      return {scene_i->second, at_version};
+      return {scene_i->second, vers};
     }
 
     void UpdateSharedContent(SharedC &&shared_content) {
       CHECK_EQ(shared_content_refs_->load(), 0)
           << "Cannot update shared content while outstanding references to the "
              "old value are held.";
-      std::unique_lock<std::mutex> lock(shared_content_mu_);
+      std::unique_lock<std::shared_mutex> lock(shared_content_m_);
       shared_content_ = shared_content;
     }
 
     // Provide a deleter_ptr that decs the ref count to the shared content when
     // released.
     util::deleter_ptr<SharedC> shared_content() const {
-      std::shared_lock<std::mutex> slock(shared_content_mu_);
+      std::shared_lock<std::shared_mutex> slock(shared_content_m_);
       ++(*shared_content_refs_);
       return util::deleter_ptr<SharedC>(
           &shared_content_,
@@ -303,7 +313,7 @@ class StageGraph : public util::Lender {
 
     // Protects only the shared content. We can give this it's own mutex as
     // shared content won't be modified when the StageGraph takes it's lock.
-    std::mutex shared_content_mu_;
+    std::shared_mutex shared_content_m_;
     SharedC shared_content_;
 
     // Mutated only when the parent StageGraph locks it's mutex.
@@ -313,7 +323,7 @@ class StageGraph : public util::Lender {
   };
 
   // Used to provide references to indexes.
-  util::Loan<StageGraph> MakeLoan() { return MakeLoan<StageGraph>(); }
+  util::Loan<StageGraph> GetLoan() { return MakeLoan<StageGraph>(); }
 
   Stage &GetStageOrDie(const std::string &name) {
     auto &stage_i = stages_.find(name);
@@ -332,8 +342,8 @@ class StageGraph : public util::Lender {
   // after decrement and not up for deletion, add it to the frontier
   void DecParentsAndMaybeAddToFrontier(Version *v,
                                        const std::set<VersionId> deleted_set) {
-    if ((--(v->parent_count) == 0) &&
-        (delete_vers.find(v->vers()) == delete_vers.end())) {
+    if ((--(v->parent_count_) == 0) &&
+        (deleted_set.find(v->vers()) == deleted_set.end())) {
       frontier_.insert(v->vers());
     }
   }
@@ -354,20 +364,20 @@ class StageGraph : public util::Lender {
     std::set<VersionId> delete_vers;
     for (const auto &version_i : version_graph_) {
       // Never try to delete version 0.
-      if (version_i->first.vers() != 0) {
-        delete_vers.insert(version_i->first.vers());
+      if (version_i.second.vers() != 0) {
+        delete_vers.insert(version_i.second.vers());
       }
     }
 
     // From every frontier, find versions that are inaccessible from pins
-    for (const auto &frontier_i = frontier_.begin();
+    for (auto &frontier_i = frontier_.begin();
          (frontier_i != frontier_.end()) && (!delete_vers.empty());
          ++frontier_i) {
       // A stack of versions left to visit and whether their parent's were
       // accessible.
       std::vector<std::pair<VersionId, bool>> persue;
 
-      Version *v = &GetVersionOrDie(persue.back(*frontier_i));
+      Version *v = &GetVersionOrDie(*frontier_i);
       persue.push_back({*frontier_i, v->pinned()});
 
       while (!persue.empty()) {
@@ -382,7 +392,7 @@ class StageGraph : public util::Lender {
 
         for (const auto &link_i : v->links()) {
           // Don't try to visit version 0
-          if (link_i->first != 0) persue.push_back({link_i->first, accessible});
+          if (link_i.first != 0) persue.push_back({link_i.first, accessible});
         }
         // Don't try to visit version 0
         if (v->vers() != 0) persue.push_back({v->base(), accessible});
@@ -395,16 +405,18 @@ class StageGraph : public util::Lender {
     }
 
     // Delete remaining inaccessible versions and rebuild frontiers.
-    for (const auto &vers = delete_vers.rbegin(); vers != delete_vers.rend();
+    for (auto &vers = delete_vers.rbegin(); vers != delete_vers.rend();
          ++vers) {
       Version *v = &GetVersionOrDie(*vers);
-      if (frontier_.find(v->vers())) frontier_.erase(v->vers());
+
+      auto &version_i = frontier_.find(v->vers());
+      if (version_i != frontier_.end()) frontier_.erase(version_i);
 
       // Remove a parent from all descendent's of this version, and if any wind
       // up with 0 parents, make them frontiers.
       DecParentsAndMaybeAddToFrontier(&GetVersionOrDie(v->base()), delete_vers);
       for (auto &link_v : v->links()) {
-        DecParentsAndMaybeAddToFrontier(&GetVersionOrDie(link_v->first),
+        DecParentsAndMaybeAddToFrontier(&GetVersionOrDie(link_v.first),
                                         delete_vers);
       }
 
@@ -415,9 +427,9 @@ class StageGraph : public util::Lender {
   VersionId CreateVersion() { return ++vers_generator_; }
 
   // Write-locked when any of the underlying data structures are modified. Since
-  // Indexes perform most of the locking themselves, we leave all methods
+  // Indexes perform all of the locking themselves, we leave all methods
   // unguarded.
-  std::mutex m_;
+  std::shared_mutex m_;
 
   // Map to keep deletion in descending chronological order to preserve loans
   // between scenes.
@@ -445,9 +457,9 @@ class StageGraph : public util::Lender {
   // Returns an index to unmodified stages.
   Index CreateIndex(const std::string &stage_name) {
     Version &v = GetVersionOrDie(0);
+    v.inc();
     v.pin();
-    v.ref();
-    return Index(0, &GetStageOrDie(stage_name), MakeLoan<StageGraph>());
+    return Index(0, &GetStageOrDie(stage_name), GetLoan());
   }
 
   // Since stages cannot be added/removed, we create a StageGraph through a
@@ -556,7 +568,7 @@ class StageGraph : public util::Lender {
     void GetContent(std::function<void(const C &)> consumer,
                     uint32_t depth = std::numeric_limits<uint32_t>::max()) {
       CHECK(valid()) << "Index invalid.";
-      std::shared_lock<std::mutex> slock(stage_graph_->m_);
+      std::shared_lock<std::shared_mutex> slock(stage_graph_->m_);
 
       std::vector<C *> content_list;
       Scene *scene = &(s->GetScene(vers_));
@@ -577,7 +589,7 @@ class StageGraph : public util::Lender {
     // Sets our stage pointer, "goes" to the stage.
     void Go(const std::string &stage_name) {
       CHECK(valid()) << "Index invalid.";
-      std::shared_lock<std::mutex> slock(stage_graph_->m_);
+      std::shared_lock<std::shared_mutex> slock(stage_graph_->m_);
       stage_ = &(stage_graph_->GetStageOrDie(stage_name));
     }
 
@@ -591,7 +603,7 @@ class StageGraph : public util::Lender {
     // is a technique to avoid storing large amounts of data in every scene)
     void SetContent(C &&content, bool link_base = false) {
       CHECK(valid()) << "Index invalid.";
-      std::unique_lock<std::mutex> lock(stage_graph_->m_);
+      std::unique_lock<std::shared_mutex> lock(stage_graph_->m_);
 
       Version &v = stage_graph_->GetVersionOrDie(vers_);
 
@@ -602,7 +614,7 @@ class StageGraph : public util::Lender {
       // If nobody else cares about the scene we're currently looking at (and it
       // already exists) we can just overwrite the content
       if (v.overwritable_by_ref() && (base_vers == vers_)) {
-        base_scene.content = content;
+        base_scene.content_ = content;
         return;
       }
 
@@ -618,8 +630,8 @@ class StageGraph : public util::Lender {
         // Create a new version
         new_vers = stage_graph_->CreateVersion();
         stage_graph_->version_graph_
-            .emplace(std::make_pair(new_vers,
-                                    Version(new_vers, vers_, stage_graph_)))
+            .emplace(std::pair<VersionId, Version>(
+                new_vers, Version(new_vers, vers_, stage_graph_.get())))
             .first->second.AddStage(std::string(stage_->name_));
 
         // Update the frontier
@@ -627,7 +639,7 @@ class StageGraph : public util::Lender {
         if (frontier_i != stage_graph_->frontier_.end()) {
           stage_graph_->frontier_.erase(frontier_i);
         }
-        stage_graph_->frontier.insert(new_vers);
+        stage_graph_->frontier_.insert(new_vers);
       } else {
         // We can reuse our current version since nobody else references it,
         // but we'll still need to add a new scene. Tell the version about the
@@ -635,9 +647,9 @@ class StageGraph : public util::Lender {
         v.AddStage(std::string(stage_->name_));
       }
 
-      stage_->AddScene(
-          new_vers,
-          Scene{link_base ? base_scene.MakeLoan() : util::Loan(), content});
+      stage_->AddScene(new_vers, Scene(link_base ? base_scene.GetLoan()
+                                                 : util::Loan<Scene>(),
+                                       std::move(content)));
       vers_ = new_vers;
     }
 
@@ -653,7 +665,7 @@ class StageGraph : public util::Lender {
           << "Embedding will introduce cycle in version graph.";
 
       {
-        std::shared_lock<std::mutex> slock(stage_graph_->m_);
+        std::shared_lock<std::shared_mutex> slock(stage_graph_->m_);
 
         Version &embed_v = stage_graph_->GetVersionOrDie(index.vers_);
         Version &v = stage_graph_->GetVersionOrDie(vers_);
@@ -689,7 +701,7 @@ class StageGraph : public util::Lender {
           << "Index must be unembedded from the same STAGE into which it was "
              "embedded.";
       {
-        std::shared_lock<std::mutex> slock(stage_graph_->m_);
+        std::shared_lock<std::shared_mutex> slock(stage_graph_->m_);
 
         Version &unembed_v =
             stage_graph_->GetVersionOrDie(embedded_index.dst_vers_);
@@ -709,18 +721,18 @@ class StageGraph : public util::Lender {
         }
       }
 
-      return Index(embedded_index.dst_vers_, stage_, stage_graph_->MakeLoan());
+      return Index(embedded_index.dst_vers_, stage_, stage_graph_->GetLoan());
     }
 
     // Form a new index from this one at the same stage and version.
     Index Clone() {
       CHECK(valid()) << "Index invalid.";
-      std::shared_lock<std::mutex> slock(stage_graph_->m_);
+      std::shared_lock<std::shared_mutex> slock(stage_graph_->m_);
       Version &v = stage_graph_->GetVersionOrDie(vers_);
       std::unique_lock<std::mutex> lock(v.m_);
       v.inc();
       v.pin();
-      return Index(vers_, stage_, stage_graph_->MakeLoan());
+      return Index(vers_, stage_, stage_graph_->GetLoan());
     }
 
     // Release this index, and replace ourselves with the incoming index.
@@ -736,7 +748,7 @@ class StageGraph : public util::Lender {
       if (!valid()) return;
       invalidate();
 
-      std::unique_lock<std::mutex> lock(stage_graph_->m_);
+      std::unique_lock<std::shared_mutex> lock(stage_graph_->m_);
       Version &v = stage_graph_->GetVersionOrDie(vers_);
       v.dec();
       v.unpin();
@@ -768,6 +780,7 @@ class StageGraph : public util::Lender {
       stages_.emplace(std::make_pair(std::string(frag.name), std::move(stage)));
       v.AddStage(std::move(frag.name));
     }
+    vers_generator_ = 0;
   }
 };
 

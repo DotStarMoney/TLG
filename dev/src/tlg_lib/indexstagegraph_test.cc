@@ -22,4 +22,11 @@ StageGraph<string, string> makeSimpleGraph() {
 TEST(IndexStageGraphTest, SimpleJumpWithoutRetention) {
   auto graph = makeSimpleGraph();
 
+  auto index_a = graph.CreateIndex("a");
+  auto index_b = index_a.Clone();
+
+  index_b.SetContent("new");
+
+
+
 }
