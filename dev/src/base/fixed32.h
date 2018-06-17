@@ -111,7 +111,6 @@ class Fixed32 {
  private:
   int32_t x_;
 };
-
 }  // namespace base
 
 #endif  // BASE_FIXED32_H_

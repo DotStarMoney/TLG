@@ -60,8 +60,8 @@ TEST(LoanTest, MoveInvalidatesLoan) {
     EXPECT_EQ(loan1.get(), nullptr);
     EXPECT_NE(loan2.get(), nullptr);
 
-    EXPECT_DEATH({ int i = loan1->cats_; }, "Loaned ptr invalidated");
-    EXPECT_DEATH({ int i = (*loan1).cats_; }, "Loaned ptr invalidated");
+    EXPECT_DEATH({ int i = loan1->cats_; }, "Loaned ptr invalid.");
+    EXPECT_DEATH({ int i = (*loan1).cats_; }, "Loaned ptr invalid.");
   }
 }
 
