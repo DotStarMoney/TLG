@@ -31,7 +31,7 @@ namespace {
 // of length "max", get the range of indices of blocks we could collide with
 // moving over v. Returns false if the grid will never overlap the moving
 // segment. If the segment could not overlap an adjacent block, the second index
-// in range will preceed the first in the sign of v.
+// in range will precede the first in the sign of v.
 bool GetCollidingGridRange(double p, double p_extent, double v, int max,
                            int range[2]) {
   if (v >= 0) {
@@ -75,7 +75,7 @@ BlockGrid::ClipResult BlockGrid::ClipMovingRect(dvec2 p, dvec2 s, dvec2 v,
   int x_inc = v.x >= 0 ? 1 : -1;
   int y_inc = v.y >= 0 ? 1 : -1;
 
-  // It's possible we never even touch another grid cell, and can early-out here
+  // It's possible we never even touch another grid cell and can early-out here
   // if this is the case.
   if ((((x_range[1] - x_index) * x_inc) < 0) &&
       (((y_range[1] - y_index) * y_inc) < 0)) {

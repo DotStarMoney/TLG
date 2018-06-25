@@ -30,6 +30,7 @@ add_library(retro_fbimg
 target_link_libraries(retro_fbimg
 	retro_fbgfx
 	util_deleterptr
+	util_noncopyable
 	SDL2-static
 	absl::strings
 	stb_image

@@ -10,13 +10,14 @@
 #include "glog/logging.h"
 #include "retro/fbcore.h"
 #include "util/deleterptr.h"
+#include "util/noncopyable.h"
 
 namespace retro {
 
 class FbGfx;
 // Fixed size 32bit image class, basically a wrapper around SDL_Texture and an
 // image loading library.
-class FbImg {
+class FbImg : public util::NonCopyable {
   friend class FbGfx;
 
  public:
@@ -35,7 +36,6 @@ class FbImg {
  private:
   typedef unsigned char StbImageData;
   FbImg(util::deleter_ptr<SDL_Texture> texture, int w, int h, bool is_target);
-
 
   static util::deleter_ptr<SDL_Texture> TextureFromSurface(
       SDL_Surface* surface);

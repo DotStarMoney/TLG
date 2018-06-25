@@ -164,6 +164,25 @@ target_sources(util_stopwatch INTERFACE
 	${CMAKE_CURRENT_LIST_DIR}/stopwatch.h)
 target_include_directories(util_stopwatch INTERFACE
 	${CMAKE_CURRENT_LIST_DIR})
+#_______________________________________________________________________________
+#util::xml
+add_library(util_xml
+	xml.cc
+	xml.h)
+target_link_libraries(util_xml
+	third_party_rapidxml
+	util_noncopyable
+	absl::strings
+	glog)
+#_______________________________________________________________________________
+#util::xml test
+add_executable(util_xml_test
+	xml_test.cc)
+target_link_libraries(util_xml_test
+	util_xml
+	gtest
+	gtest_main)
+add_test(util_xml util_xml_test)
 # ----------------------------------- FOLDER -----------------------------------
 set_target_properties(
 	util_bits
@@ -178,4 +197,6 @@ set_target_properties(
 	util_status_test
 	util_statusor_test
 	util_status_macros_test
+	util_xml
+	util_xml_test
 	PROPERTIES FOLDER util)

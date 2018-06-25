@@ -5,7 +5,7 @@ set(LOCAL ${CMAKE_CURRENT_LIST_DIR})
 # ----------------------------- ADD SUBDIRECTORIES -----------------------------
 #add_subdirectory(${LOCAL}/audio)
 add_subdirectory(${LOCAL}/base)
-#add_subdirectory(${LOCAL}/external)
+add_subdirectory(${LOCAL}/third_party)
 #add_subdirectory(${LOCAL}/storage)
 add_subdirectory(${LOCAL}/thread)
 add_subdirectory(${LOCAL}/util)

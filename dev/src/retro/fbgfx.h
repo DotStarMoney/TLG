@@ -21,7 +21,7 @@ class FbGfx final {
   friend class FbImg;
 
  public:
-  // Must be called to use graphics functionality, can can only be called once.
+  // Must be called to use graphics functionality, can only be called once.
   // Resolution is the physical resolution of the drawing area whereas the
   // logical resolution is the resolution at which the pixels are displayed.
   static void Screen(glm::ivec2 res, bool fullscreen = false,
