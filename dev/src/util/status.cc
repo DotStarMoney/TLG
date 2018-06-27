@@ -38,8 +38,8 @@ absl::string_view Status::message() const {
   if (handle_ == nullptr) return "";
   return handle_->message;
 }
-error::CannonicalErrors Status::cannonical_error_code() const {
-  return handle_ == nullptr ? error::UNKNOWN : handle_->cannonical_error_code;
+error::CanonicalErrors Status::canonical_error_code() const {
+  return handle_ == nullptr ? error::UNKNOWN : handle_->canonical_error_code;
 }
 
 void Status::MaybeDereference(Payload* handle_) {
@@ -56,7 +56,7 @@ void Status::MaybeReference(Payload* handle_) {
 }
 bool Status::SlowComparePayloadsForEquality(Payload* lhs, Payload* rhs) {
   if ((lhs == nullptr) || (rhs == nullptr)) return false;
-  if (lhs->cannonical_error_code != rhs->cannonical_error_code) return false;
+  if (lhs->canonical_error_code != rhs->canonical_error_code) return false;
   if (lhs->message.compare(rhs->message) != 0) return false;
   return true;
 }
@@ -65,7 +65,7 @@ std::string Status::ToString() const {
   if (ok()) return "Ok.";
 
   return absl::StrCat(
-      util::error::CannonicalErrorString[cannonical_error_code()], ": ",
+      util::error::CanonicalErrorString[canonical_error_code()], ": ",
       message());
 }
 

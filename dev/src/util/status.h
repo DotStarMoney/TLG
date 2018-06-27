@@ -6,7 +6,7 @@
 #include "absl/strings/string_view.h"
 #include "base/static_type_assert.h"
 #include "glog/logging.h"
-#include "util/cannonical_errors.h"
+#include "util/canonical_errors.h"
 
 namespace util {
 
@@ -16,7 +16,7 @@ class Status final {
   Status();
   // err_code must not be UNKNOWN and msg must not be "".
   template <class StringT>
-  Status(error::CannonicalErrors err_code, StringT&& msg) {
+  Status(error::CanonicalErrors err_code, StringT&& msg) {
     base::type_assert::AssertIsConvertibleTo<std::string, StringT>();
     CHECK_NE(err_code, error::UNKNOWN) << "Error type must not be unknown.";
     handle_ = new Payload(err_code, std::forward<StringT>(msg));
@@ -34,7 +34,7 @@ class Status final {
   bool ok() const;
   // An ok status returns ""
   absl::string_view message() const;
-  error::CannonicalErrors cannonical_error_code() const;
+  error::CanonicalErrors canonical_error_code() const;
   Status& status() { return *this; }
 
   std::string ToString() const;
@@ -46,15 +46,15 @@ class Status final {
   struct Payload {
     // Create a new payload with an automatic reference count of 1.
     template <class StringT>
-    Payload(error::CannonicalErrors err_code, StringT&& msg)
-        : cannonical_error_code(err_code),
+    Payload(error::CanonicalErrors err_code, StringT&& msg)
+        : canonical_error_code(err_code),
           message(std::forward<StringT>(msg)),
           refs(1) {
       base::type_assert::AssertIsConvertibleTo<std::string, StringT>();
       CHECK(!message.empty()) << "Message must not be empty.";
     }
     // The core type of error
-    const error::CannonicalErrors cannonical_error_code;
+    const error::CanonicalErrors canonical_error_code;
     const std::string message;
     std::atomic_uint32_t refs;
   };
@@ -75,7 +75,7 @@ bool operator!=(const Status& lhs, const Status& rhs);
 
 extern const Status OkStatus;
 
-// Convenience methods for making statuses from cannonical errors.
+// Convenience methods for making statuses from canonical errors.
 
 template <class StringT>
 Status FailedPreconditionError(StringT&& msg) {

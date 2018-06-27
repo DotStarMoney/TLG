@@ -7,7 +7,7 @@ namespace util {
 namespace error {
 
 // The convention is that all error codes are of type int.
-enum CannonicalErrors : int {
+enum CanonicalErrors : int {
   // This indicates a failure of error handling code and should not be used
   // explicitly.
   UNKNOWN = 0,
@@ -35,8 +35,8 @@ enum CannonicalErrors : int {
   IO_ERROR = 10
 };
 
-// The cannonical errors but as strings
-extern const absl::string_view CannonicalErrorString[];
+// The canonical errors but as strings
+extern const absl::string_view CanonicalErrorString[];
 
 }  // namespace error
 }  // namespace util

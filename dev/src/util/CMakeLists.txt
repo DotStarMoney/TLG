@@ -16,11 +16,11 @@ target_link_libraries(util_bits_test
 	gtest_main)
 add_test(util_bits util_bits_test)
 #_______________________________________________________________________________
-#util::cannonical_errors
-add_library(util_cannonical_errors
-	cannonical_errors.cc
-	cannonical_errors.h)
-target_link_libraries(util_cannonical_errors
+#util::canonical_errors
+add_library(util_canonical_errors
+	canonical_errors.cc
+	canonical_errors.h)
+target_link_libraries(util_canonical_errors
 	absl::strings)
 #_______________________________________________________________________________
 #util::deleterptr
@@ -106,7 +106,7 @@ add_library(util_status
 	status.cc
 	status.h)
 target_link_libraries(util_status
-	util_cannonical_errors
+	util_canonical_errors
 	absl::strings
 	glog)
 #_______________________________________________________________________________
@@ -172,7 +172,6 @@ add_library(util_xml
 target_link_libraries(util_xml
 	third_party_rapidxml
 	util_noncopyable
-	absl::strings
 	glog)
 #_______________________________________________________________________________
 #util::xml test
@@ -181,13 +180,14 @@ add_executable(util_xml_test
 target_link_libraries(util_xml_test
 	util_xml
 	gtest
-	gtest_main)
+	gtest_main
+	gmock)
 add_test(util_xml util_xml_test)
 # ----------------------------------- FOLDER -----------------------------------
 set_target_properties(
 	util_bits
 	util_bits_test
-	util_cannonical_errors
+	util_canonical_errors
 	util_deleterptr_test
 	util_loan_test
 	util_make_cleanup

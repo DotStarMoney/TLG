@@ -6,12 +6,12 @@
 TEST(StatusTest, BasicConstructor) {
   util::Status status(util::error::UNIMPLEMENTED_ERROR, "Basic error.");
   EXPECT_EQ(status.message(), "Basic error.");
-  EXPECT_EQ(status.cannonical_error_code(), util::error::UNIMPLEMENTED_ERROR);
+  EXPECT_EQ(status.canonical_error_code(), util::error::UNIMPLEMENTED_ERROR);
   EXPECT_FALSE(status.ok());
 
   status = util::Status();  // Effectively util::OkStatus
   EXPECT_EQ(status.message(), "");
-  EXPECT_EQ(status.cannonical_error_code(), util::error::UNKNOWN);
+  EXPECT_EQ(status.canonical_error_code(), util::error::UNKNOWN);
   EXPECT_TRUE(status.ok());
 
   EXPECT_DEATH(
