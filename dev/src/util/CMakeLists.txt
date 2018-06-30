@@ -39,13 +39,6 @@ target_link_libraries(util_deleterptr_test
 	gtest_main)
 add_test(util_deleterptr util_deleterptr_test)
 #_______________________________________________________________________________
-#util::fixed_point
-add_library(util_fixed_point INTERFACE)
-target_sources(util_fixed_point INTERFACE
-	${CMAKE_CURRENT_LIST_DIR}/fixed_point.h)
-target_include_directories(util_fixed_point INTERFACE
-	${CMAKE_CURRENT_LIST_DIR})
-#_______________________________________________________________________________
 #util::loan
 add_library(util_loan INTERFACE)
 target_sources(util_loan INTERFACE

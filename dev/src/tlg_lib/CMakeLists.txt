@@ -52,10 +52,31 @@ target_link_libraries(tlg_lib_tileset
 	util_loan
 	glog
 	util_xml)
+#_______________________________________________________________________________
+#tlg_lib::rescache
+add_library(tlg_lib_rescache INTERFACE)
+target_sources(tlg_lib_rescache INTERFACE
+	${CMAKE_CURRENT_LIST_DIR}/rescache.h)
+target_include_directories(tlg_lib_rescache INTERFACE
+	${CMAKE_CURRENT_LIST_DIR})
+target_link_libraries(tlg_lib_rescache INTERFACE
+	util_loan
+	util_noncopyable
+	glog)
+#_______________________________________________________________________________
+#tlg_lib::rescache test
+add_executable(tlg_lib_rescache_test
+	rescache_test.cc)
+target_link_libraries(tlg_lib_rescache_test
+	tlg_lib_rescache
+	gtest
+	gmock
+	gtest_main)
 # ----------------------------------- FOLDER -----------------------------------
 set_target_properties(
 	tlg_lib_indexstagegraph_test
 	tlg_lib_stage
 	tlg_lib_stage_test
 	tlg_lib_tileset
+	tlg_lib_rescache_test
 	PROPERTIES FOLDER tlg_lib)

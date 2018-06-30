@@ -203,7 +203,7 @@ class ScopedXmlDocument : public util::NonCopyable {
     root_node_.PopulateFromNode(root);
   }
 
-  char* ReadWholeFile(const std::string& path) {
+  static char* ReadWholeFile(const std::string& path) {
     FILE* f = fopen(path.c_str(), "rb");
     CHECK_NE(f, static_cast<FILE*>(nullptr)) << "Failed to open file.";
 
@@ -222,7 +222,7 @@ class ScopedXmlDocument : public util::NonCopyable {
     return contents;
   }
 
-  void FreeWholeFile(char* contents) {
+  static void FreeWholeFile(char* contents) {
     if (contents != nullptr) free(contents);
   }
 

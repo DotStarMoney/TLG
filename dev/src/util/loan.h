@@ -9,7 +9,7 @@
 namespace util {
 
 // Loan and Lender together help safely implementing the generator pattern.
-// One class, a Lender, can create Loan objects that that must not outlive the
+// One class, a Lender, can create Loan objects that must not outlive the
 // Lender (and are safely caught using reference counting if so). Loans should
 // only be accessed from a single thread.
 //
