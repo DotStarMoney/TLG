@@ -11,9 +11,10 @@ namespace tlg_lib {
 struct TestResource : public Loadable {
   static constexpr uint64_t kTypeId = 1;
 
-  uint64_t type_id() const { return kTypeId; }
+  uint64_t type_id() const override { return kTypeId; }
 
-  static std::unique_ptr<TestResource> Load(const std::string& uri) {
+  static std::unique_ptr<TestResource> Load(const std::string& uri,
+                                            ResCache* cache) {
     ++times_loaded;
     return std::make_unique<TestResource>(uri);
   }
@@ -43,8 +44,9 @@ TEST(ResCacheTest, testBasicCaching) {
 // A loadable just like TestResource, however it has a differing kTypeId;
 struct OtherTestResource : public Loadable {
   static constexpr uint64_t kTypeId = 2;
-  uint64_t type_id() const { return kTypeId; }
-  static std::unique_ptr<TestResource> Load(const std::string& uri) {
+  uint64_t type_id() const override { return kTypeId; }
+  static std::unique_ptr<TestResource> Load(const std::string& uri,
+                                            ResCache* cache) {
     return std::make_unique<TestResource>(uri);
   }
   OtherTestResource(const std::string& x) : x(x) {}

@@ -66,7 +66,7 @@ namespace util {
 //                  offsetof(RootXmlNode, children));
 //       };
 //
-//       std::string_view name() const { return "root"; }
+//       std::string_view name() const override { return "root"; }
 //     }
 //
 //     // The following just provides the above descriptor to the base class
@@ -89,7 +89,7 @@ namespace util {
 //                      offsetof(ChildXmlNode, c));
 //         addData(offsetof(ChildXmlNode, text));
 //       }
-//       std::string_view name() const { return "child"; }
+//       std::string_view name() const override { return "child"; }
 //     };
 //
 //     static const Descriptor descriptor;

@@ -1,26 +1,31 @@
 #ifndef TLG_LIB_TILESET_H_
 #define TLG_LIB_TILESET_H_
 
+#include <memory>
 #include <string>
 
 #include "retro/fbimg.h"
-#include "util/loan.h"
+#include "tlg_lib/rescache.h"
 
 namespace tlg_lib {
 
-class Tileset : public util::Lender {
+class Tileset : public Loadable {
  public:
-  static std::unique_ptr<Tileset> FromTsx(const std::string& tileset_path);
+  static constexpr uint64_t kTypeId = 0x2c4265a422b2f5c8;
+  uint64_t type_id() const override { return kTypeId; }
+
+  static std::unique_ptr<Tileset> Load(const std::string& uri, ResCache* cache);
 
   const std::string& name() const { return name_; }
   uint32_t tile_w() const { return tile_w_; }
   uint32_t tile_h() const { return tile_h_; }
   uint32_t w() const { return image_->width(); }
   uint32_t h() const { return image_->height(); }
+  const retro::FbImg& image() const { return *(image_.get()); }
 
  private:
   Tileset(const std::string& image_path, uint32_t tile_w, uint32_t tile_h,
-          std::string&& name);
+          const std::string& name);
 
   const uint32_t tile_w_;
   const uint32_t tile_h_;

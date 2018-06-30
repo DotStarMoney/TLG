@@ -176,6 +176,23 @@ target_link_libraries(util_xml_test
 	gtest_main
 	gmock)
 add_test(util_xml util_xml_test)
+#_______________________________________________________________________________
+#util::encoding
+add_library(util_encoding
+	encoding.cc
+	encoding.h)
+target_link_libraries(util_encoding
+	glog)
+#_______________________________________________________________________________
+#util::encoding test
+add_executable(util_encoding_test
+	encoding_test.cc)
+target_link_libraries(util_encoding_test
+	util_encoding
+	gtest
+	gtest_main
+	gmock)
+add_test(util_encoding util_encoding_test)
 # ----------------------------------- FOLDER -----------------------------------
 set_target_properties(
 	util_bits
@@ -192,4 +209,6 @@ set_target_properties(
 	util_status_macros_test
 	util_xml
 	util_xml_test
+	util_encoding
+	util_encoding_test
 	PROPERTIES FOLDER util)

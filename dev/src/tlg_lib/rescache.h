@@ -20,13 +20,14 @@ namespace tlg_lib {
 // three special members: Load, kTypeId, and type_id. Given a Loadable
 // "MyResource":
 //
-//   static unique_ptr<MyResource> Load(const std::string& uri) {
-//     <Code to load and create instance here.>
+//   static unique_ptr<MyResource>
+//       Load(const std::string& uri, ResCache* cache) {
+//     <Code to load and create instance here, possibly loading more resources.>
 //   }
 //
 //   static constexpr uint64_t kTypeId = <Type Id>
 //
-//   uint64_t type_id() const { return kTypeId; }
+//   uint64_t type_id() const override { return kTypeId; }
 //
 // "Load" loads and creates instances of the resource and is the cache's way
 // of creating and caching members it does not already have. "kTypeId" provides
@@ -45,7 +46,8 @@ class Loadable : util::Lender {
 
   virtual uint64_t type_id() const = 0;
   // Subclasses must also implement:
-  //   static unique_ptr<MyResource> Load(const std::string& uri) { ... }
+  //   static unique_ptr<MyResource>
+  //       Load(const std::string& uri, ResCache* cache) { ... }
   // and
   //   static constexpr uint64_t kTypeId = ...
 };
@@ -65,7 +67,7 @@ class ResCache : public util::NonCopyable {
       resource_i =
           resources_
               .insert(std::pair<std::string, std::unique_ptr<Loadable>>(
-                  uri, T::Load(uri)))
+                  uri, T::Load(uri, this)))
               .first;
     }
     util::Loan<const T> resource = resource_i->second->GetResource<const T>();

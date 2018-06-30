@@ -4,17 +4,22 @@
 #include <vector>
 
 #include "physics/retro.h"
+#include "tlg_lib/tileset.h"
 #include "util/loan.h"
-#include "retro/fbimg.h"
 
 namespace tlg_lib {
 
 class StaticStageContent {
-  typedef uint32_t TileDescriptor;
 
-  std::vector<util::Loan<retro::FbImg>> l;
-  std::vector<std::vector<TileDescriptor>> layers;
-  physics::retro::BlockGrid collision;
+  
+ private:
+  struct TileDescriptor {
+    uint32_t tile_i : 24, set_i : 8;
+  };
+
+  std::vector<util::Loan<const Tileset>> tilesets_;
+  std::vector<std::vector<TileDescriptor>> layers_;
+  physics::retro::BlockGrid collision_;
 };
 
 }  // namespace tlg_lib

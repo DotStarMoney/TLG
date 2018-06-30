@@ -30,7 +30,7 @@ add_library(tlg_lib_stage
 	stage.cc
 	stage.h)
 target_link_libraries(tlg_lib_stage
-	retro_fbimg
+	tlg_lib_tileset
 	util_loan
 	physics_retro)
 #_______________________________________________________________________________
@@ -49,7 +49,7 @@ add_library(tlg_lib_tileset
 	tileset.h)
 target_link_libraries(tlg_lib_tileset
 	retro_fbimg
-	util_loan
+	tlg_lib_rescache
 	glog
 	util_xml)
 #_______________________________________________________________________________
