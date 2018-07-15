@@ -19,13 +19,25 @@ class Tileset : public Loadable {
   const std::string& name() const { return name_; }
   uint32_t tile_w() const { return tile_w_; }
   uint32_t tile_h() const { return tile_h_; }
-  uint32_t w() const { return image_->width(); }
-  uint32_t h() const { return image_->height(); }
-  const retro::FbImg& image() const { return *(image_.get()); }
+  uint32_t w() const {
+    CHECK(image_) << "Meta tileset.";
+    return image_->width();
+  }
+  uint32_t h() const {
+    CHECK(image_) << "Meta tileset.";
+    return image_->height();
+  }
+  const retro::FbImg& image() const {
+    CHECK(image_) << "Meta tileset.";
+    return *(image_.get());
+  }
+  bool is_meta() const { return !image_; }
 
  private:
   Tileset(const std::string& image_path, uint32_t tile_w, uint32_t tile_h,
           const std::string& name);
+
+  Tileset(uint32_t tile_w, uint32_t tile_h, const std::string& name);
 
   const uint32_t tile_w_;
   const uint32_t tile_h_;

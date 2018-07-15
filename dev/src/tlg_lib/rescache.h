@@ -8,6 +8,7 @@
 #include <type_traits>
 #include <unordered_map>
 
+#include "absl/strings/str_cat.h"
 #include "glog/logging.h"
 #include "util/loan.h"
 #include "util/noncopyable.h"
@@ -33,7 +34,17 @@ namespace tlg_lib {
 // of creating and caching members it does not already have. "kTypeId" provides
 // a means of checking that loaded resources match the desired template type.
 // It is suggested to choose a random number for this value. "type_id" must
-// always just return the value of kTypeId;
+// always just return the value of kTypeId.
+//
+// Resources that load other resources
+// ___________________________________
+//
+// Loadable::Load method takes a ResCache* parameter for resources that, when
+// loading, will load other resources. ResCache will automatically resolve paths
+// to resources loaded from other resources by assuming they are specified in
+// relative paths. I.e: if Loadable A has uri "/res/dir/a.xml" and in its Load
+// method calls Load of Loadable B with uri "b.xml", ResCache will try to load
+// the Loadable B from "/res/dir/b.xml."
 //
 // This class is not thread safe in any way.
 
@@ -46,10 +57,14 @@ class Loadable : util::Lender {
 
   virtual uint64_t type_id() const = 0;
   // Subclasses must also implement:
+  //
   //   static unique_ptr<MyResource>
   //       Load(const std::string& uri, ResCache* cache) { ... }
+  //
   // and
+  //
   //   static constexpr uint64_t kTypeId = ...
+  //
 };
 
 class ResCache : public util::NonCopyable {
@@ -62,13 +77,26 @@ class ResCache : public util::NonCopyable {
   util::Loan<const T> Load(const std::string& uri) {
     static_assert(std::is_base_of<Loadable, T>::value,
                   "Can only load classes extending tlg_lib::Loadable.");
-    auto& resource_i = resources_.find(uri);
+    std::string adjusted_uri;
+    const std::string* final_uri = &uri;
+    if (!relative_path_.empty()) {
+      adjusted_uri = relative_path_;
+      absl::StrAppend(&adjusted_uri, uri);
+      final_uri = &adjusted_uri;
+    }
+
+    auto& resource_i = resources_.find(*final_uri);
     if (resource_i == resources_.end()) {
+      std::string_view old_relative_path(relative_path_);
+      relative_path_ = ExtractRelativePath(*final_uri);
+
       resource_i =
           resources_
               .insert(std::pair<std::string, std::unique_ptr<Loadable>>(
-                  uri, T::Load(uri, this)))
+                  *final_uri, T::Load(*final_uri, this)))
               .first;
+
+      relative_path_ = old_relative_path;
     }
     util::Loan<const T> resource = resource_i->second->GetResource<const T>();
     CHECK_EQ(T::kTypeId, resource->type_id())
@@ -77,9 +105,16 @@ class ResCache : public util::NonCopyable {
   }
 
  private:
+  static std::string_view ExtractRelativePath(const std::string& uri);
+
   // We can store Lenders outright as unordered_map insertion doesn't
   // invalidate references.
   std::unordered_map<std::string, std::unique_ptr<Loadable>> resources_;
+
+  // A path pre-pended to uris to support relative paths. If a resource is
+  // loaded in the context of another loading resource, the Load called by
+  // the first Load will prepend this path to the resource uri.
+  static thread_local std::string_view relative_path_;
 };
 
 }  // namespace tlg_lib

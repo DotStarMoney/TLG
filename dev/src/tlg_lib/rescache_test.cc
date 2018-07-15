@@ -66,4 +66,41 @@ TEST(ResCacheTest, testMismatchedTypes) {
       "does not match");
 }
 
+// A loadable that will call Load for another instance of itself.
+struct ChainingTestResource : public Loadable {
+  static constexpr uint64_t kTypeId = 1;
+  uint64_t type_id() const override { return kTypeId; }
+
+  static std::unique_ptr<ChainingTestResource> Load(const std::string& uri,
+                                                    ResCache* cache) {
+    static bool passed_through = false;
+
+    if (!passed_through) {
+      passed_through = true;
+      // Note the URI specified here does not have a basename; one should be
+      // appended for it.
+      cache->Load<ChainingTestResource>("local_path.xml");
+      x0 = uri;
+      return std::make_unique<ChainingTestResource>();
+    } else {
+      x1 = uri;
+      return std::make_unique<ChainingTestResource>();
+    }
+  }
+
+  static std::string x0;
+  static std::string x1;
+};
+std::string ChainingTestResource::x0;
+std::string ChainingTestResource::x1;
+
+TEST(ResCacheTest, testRecursiveLoadRelativePath) {
+  ResCache c;
+
+  c.Load<ChainingTestResource>("path/to/resource/bag.xml");
+
+  EXPECT_EQ(ChainingTestResource::x0, "path/to/resource/bag.xml");
+  EXPECT_EQ(ChainingTestResource::x1, "path/to/resource/local_path.xml");
+}
+
 }  // namespace tlg_lib

@@ -41,6 +41,9 @@
    </properties>
   </object>
   <object id="6" name="spawn" type="Spawn" x="272" y="320">
+   <properties>
+    <property name="instance" value="Spawn"/>
+   </properties>
    <point/>
   </object>
   <object id="8" name="killBox0" type="Zone" x="448" y="464" width="48" height="16">

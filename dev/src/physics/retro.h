@@ -20,7 +20,11 @@ class BlockGrid {
   };
 
   void PutBlock(glm::ivec2 p, BlockType block);
+  void PutBlock(size_t index, BlockType block);
+
   BlockType GetBlock(glm::ivec2 p) const;
+  const glm::ivec2& dims() const { return dims_; }
+  double block_side_length() const { return l_; }
 
   struct ClipResult {
     // Clipped movement vector

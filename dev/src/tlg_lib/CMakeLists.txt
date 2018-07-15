@@ -32,14 +32,19 @@ add_library(tlg_lib_stage
 target_link_libraries(tlg_lib_stage
 	tlg_lib_tileset
 	util_loan
-	physics_retro)
+	physics_retro
+	util_xml
+	tlg_lib_rescache
+	absl::strings
+	glm)
 #_______________________________________________________________________________
-#tlg_lib::stage
+#tlg_lib::stage test
 add_executable(tlg_lib_stage_test
 	stage_test.cc)
 target_link_libraries(tlg_lib_stage_test
 	tlg_lib_stage
 	gtest
+	gmock
 	gtest_main)
 add_test(tlg_lib_stage tlg_lib_stage_test)
 #_______________________________________________________________________________
@@ -54,15 +59,14 @@ target_link_libraries(tlg_lib_tileset
 	util_xml)
 #_______________________________________________________________________________
 #tlg_lib::rescache
-add_library(tlg_lib_rescache INTERFACE)
-target_sources(tlg_lib_rescache INTERFACE
-	${CMAKE_CURRENT_LIST_DIR}/rescache.h)
-target_include_directories(tlg_lib_rescache INTERFACE
-	${CMAKE_CURRENT_LIST_DIR})
-target_link_libraries(tlg_lib_rescache INTERFACE
+add_library(tlg_lib_rescache
+	rescache.cc
+	rescache.h)
+target_link_libraries(tlg_lib_rescache
 	util_loan
 	util_noncopyable
-	glog)
+	glog
+	absl::strings)
 #_______________________________________________________________________________
 #tlg_lib::rescache test
 add_executable(tlg_lib_rescache_test
@@ -72,11 +76,13 @@ target_link_libraries(tlg_lib_rescache_test
 	gtest
 	gmock
 	gtest_main)
+add_test(tlg_lib_rescache tlg_lib_rescache_test)
 # ----------------------------------- FOLDER -----------------------------------
 set_target_properties(
 	tlg_lib_indexstagegraph_test
 	tlg_lib_stage
 	tlg_lib_stage_test
 	tlg_lib_tileset
+	tlg_lib_rescache
 	tlg_lib_rescache_test
 	PROPERTIES FOLDER tlg_lib)

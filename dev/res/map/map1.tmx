@@ -40,6 +40,9 @@
    </properties>
   </object>
   <object id="3" name="spawn" type="Spawn" x="288" y="384">
+   <properties>
+    <property name="instance" value="Spawn"/>
+   </properties>
    <point/>
   </object>
  </objectgroup>

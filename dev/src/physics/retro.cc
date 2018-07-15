@@ -22,6 +22,10 @@ void BlockGrid::PutBlock(ivec2 p, BlockType block) {
   blocks_[p.y * dims_.x + p.x] = block;
 }
 
+void BlockGrid::PutBlock(size_t index, BlockType block) {
+  blocks_[index] = block;
+}
+
 BlockGrid::BlockType BlockGrid::GetBlock(ivec2 p) const {
   return blocks_[p.y * dims_.x + p.x];
 }

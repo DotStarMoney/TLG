@@ -18,5 +18,13 @@ size_t GetDecodedAllocationSize(size_t encoded_size);
 size_t Decode(std::string_view text, char* dest);
 
 }  // namespace base64
+
+// Interprets the given value as bit-for-bit one of type T1.
+template <typename T0, typename T1>
+T0 force_cast(T1 x) {
+  static_assert(sizeof(T0) <= sizeof(T1),
+                "Cannot forcibly cast to wider type.");
+  return *reinterpret_cast<T0*>(&x);
+}
 }  // namespace util
 #endif  // UTIL_ENCODING_H_

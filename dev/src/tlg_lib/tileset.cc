@@ -2,6 +2,7 @@
 
 #include <string>
 #include <string_view>
+#include <unordered_set>
 #include <vector>
 
 #include "glog/logging.h"
@@ -51,6 +52,9 @@ struct TilesetXmlNode : public util::XmlNode {
   std::vector<ImageXmlNode> images;
 };
 const TilesetXmlNode::Descriptor ImageXmlNode::descriptor;
+
+const std::unordered_set<std::string_view> kMetaTilesetNames{
+    "collision", "cshapes", "cshapes2", "cshapes3"};
 }  // namespace
 
 std::unique_ptr<Tileset> Tileset::Load(const std::string& uri,
@@ -63,6 +67,12 @@ std::unique_ptr<Tileset> Tileset::Load(const std::string& uri,
   CHECK_GT(tileset.tile_w, 0) << "Bad tile width: " << tileset.tile_w;
   CHECK_GT(tileset.tile_h, 0) << "Bad tile height: " << tileset.tile_h;
 
+  if (kMetaTilesetNames.find(tileset.name) != kMetaTilesetNames.end()) {
+    // This is a meta tileset, so we don't actually load an image for it.
+    return std::make_unique<Tileset>(tileset.tile_w, tileset.tile_h,
+                                     tileset.name);
+  }
+
   return std::make_unique<Tileset>(tileset.images[0].source, tileset.tile_w,
                                    tileset.tile_h, tileset.name);
 }
@@ -74,4 +84,6 @@ Tileset::Tileset(const std::string& image_path, uint32_t tile_w,
       name_(name),
       image_(retro::FbImg::FromFile(image_path)) {}
 
+Tileset::Tileset(uint32_t tile_w, uint32_t tile_h, const std::string& name)
+    : tile_w_(tile_w), tile_h_(tile_h), name_(name), image_(nullptr) {}
 }  // namespace tlg_lib
