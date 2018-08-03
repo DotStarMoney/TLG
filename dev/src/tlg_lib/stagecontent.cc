@@ -1,4 +1,4 @@
-#include "stage.h"
+#include "stagecontent.h"
 
 #include <algorithm>
 #include <optional>
@@ -13,6 +13,7 @@
 #include "util/xml.h"
 
 // doc it up
+//tests
 
 using glm::ivec2;
 using physics::retro::BlockGrid;

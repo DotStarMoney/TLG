@@ -4,11 +4,11 @@
 #include <functional>
 #include <future>
 
-#include "gtest/gtest.h"
 #if defined(_WIN32)
 #define NOMINMAX
 #endif
 #include "absl/synchronization/barrier.h"
+#include "gtest/gtest.h"
 
 namespace {
 template <typename F>

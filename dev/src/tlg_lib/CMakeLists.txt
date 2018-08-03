@@ -26,10 +26,10 @@ target_link_libraries(tlg_lib_indexstagegraph_test
 add_test(tlg_lib_indexstagegraph tlg_lib_indexstagegraph_test)
 #_______________________________________________________________________________
 #tlg_lib::stage
-add_library(tlg_lib_stage
-	stage.cc
-	stage.h)
-target_link_libraries(tlg_lib_stage
+add_library(tlg_lib_stagecontent
+	stagecontent.cc
+	stagecontent.h)
+target_link_libraries(tlg_lib_stagecontent
 	tlg_lib_tileset
 	util_loan
 	physics_retro
@@ -39,14 +39,14 @@ target_link_libraries(tlg_lib_stage
 	glm)
 #_______________________________________________________________________________
 #tlg_lib::stage test
-add_executable(tlg_lib_stage_test
-	stage_test.cc)
-target_link_libraries(tlg_lib_stage_test
-	tlg_lib_stage
+add_executable(tlg_lib_stagecontent_test
+	stagecontent_test.cc)
+target_link_libraries(tlg_lib_stagecontent_test
+	tlg_lib_stagecontent
 	gtest
 	gmock
 	gtest_main)
-add_test(tlg_lib_stage tlg_lib_stage_test)
+add_test(tlg_lib_stagecontent tlg_lib_stagecontent_test)
 #_______________________________________________________________________________
 #tlg_lib::tileset
 add_library(tlg_lib_tileset
@@ -80,8 +80,8 @@ add_test(tlg_lib_rescache tlg_lib_rescache_test)
 # ----------------------------------- FOLDER -----------------------------------
 set_target_properties(
 	tlg_lib_indexstagegraph_test
-	tlg_lib_stage
-	tlg_lib_stage_test
+	tlg_lib_stagecontent
+	tlg_lib_stagecontent_test
 	tlg_lib_tileset
 	tlg_lib_rescache
 	tlg_lib_rescache_test

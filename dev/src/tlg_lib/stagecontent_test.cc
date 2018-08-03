@@ -1,4 +1,4 @@
-#include "tlg_lib/rescache.h"
+#include "tlg_lib/stagecontent.h"
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
