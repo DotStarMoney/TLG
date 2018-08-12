@@ -41,7 +41,7 @@ TEST(WorkQueueTest, WorkersResumeFromBlock) {
 
   std::atomic_int32_t counter = 0;
   {
-    WorkQueue q(11);
+    WorkQueue q(3);
 
     auto f = [b, &q, &counter]() {
       SYNC(b);

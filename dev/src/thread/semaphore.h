@@ -17,6 +17,8 @@ class Semaphore : public util::NonCopyable {
   Semaphore(int32_t init_resource);
 
   void P();
+  bool TryP();
+
   void V();
 
   void Drain();

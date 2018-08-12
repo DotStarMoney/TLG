@@ -36,9 +36,9 @@ add_subdirectory(${LOCAL}/tlg_lib)
 add_executable(TLG
 	main.cc)
 target_link_libraries(TLG
-	retro_fbgfx
-	tlg_lib_indexstagegraph
-	SDL2main
+	thread_affinitizingscheduler
+	thread_workqueue
+	absl::base
 	glog)
 add_custom_command(TARGET TLG POST_BUILD
                    COMMAND ${CMAKE_COMMAND} -E copy_directory

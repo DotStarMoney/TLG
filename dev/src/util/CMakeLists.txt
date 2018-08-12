@@ -193,6 +193,20 @@ target_link_libraries(util_encoding_test
 	gtest_main
 	gmock)
 add_test(util_encoding util_encoding_test)
+#_______________________________________________________________________________
+#util::random
+add_library(util_random
+	random.cc
+	random.h)
+#_______________________________________________________________________________
+#util::random test
+add_executable(util_random_test
+	random_test.cc)
+target_link_libraries(util_random_test
+	util_random
+	gtest
+	gtest_main)
+add_test(util_random util_random_test)
 # ----------------------------------- FOLDER -----------------------------------
 set_target_properties(
 	util_bits
@@ -211,4 +225,6 @@ set_target_properties(
 	util_xml_test
 	util_encoding
 	util_encoding_test
+	util_random
+	util_random_test
 	PROPERTIES FOLDER util)

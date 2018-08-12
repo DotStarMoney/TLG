@@ -7,11 +7,9 @@
 #include <thread>
 #include <vector>
 
+#include "thread/gateway.h"
 #include "thread/semaphore.h"
 #include "util/noncopyable.h"
-
-// note that any work scheduled cannot require resources that the queue
-// will outlive
 
 namespace thread {
 
@@ -31,6 +29,11 @@ class WorkQueue : public util::NonCopyable {
   // Adds work to the queue. This will block while the queue is full.
   void AddWork(std::function<void(void)> f);
 
+  // Adds work to the queue. Returns false iff the queue is full.
+  bool TryAddWork(std::function<void(void)> f);
+
+  std::thread::id GetWorkerThreadId() const;
+
  private:
   Semaphore buffer_avail_;
   Semaphore buffer_elem_remain_;
@@ -40,9 +43,12 @@ class WorkQueue : public util::NonCopyable {
   uint32_t slot_working_;
 
   std::vector<std::function<void(void)>> buffer_;
+
+  mutable Gateway worker_id_gate_;
+  std::thread::id worker_id_;
+
   std::unique_ptr<std::thread> worker_;
 };
-
 }  // namespace thread
 
 #endif  // THREAD_WORKQUEUE_H_
