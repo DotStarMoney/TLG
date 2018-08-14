@@ -64,4 +64,13 @@ TEST(WorkQueueTest, WorkersResumeFromBlock) {
   }
   EXPECT_EQ(counter, 400);
 }
+
+TEST(WorkQueueTest, TryAdd) {
+  WorkQueue q(1);
+  auto b = NEW_BARRIER(2);
+
+  EXPECT_TRUE(q.TryAddWork([b]() { SYNC(b); }));
+  EXPECT_FALSE(q.TryAddWork([]() {}));
+  SYNC(b);
+}
 }  // namespace thread

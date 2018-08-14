@@ -19,7 +19,11 @@ WorkQueue::WorkQueue(uint32_t queue_length)
         for (;;) {
           buffer_elem_remain_.P();
           if (exit_) return;
-          buffer_[slot_working_++ % buffer_.size()]();
+          WorkElement& work_element = buffer_[slot_working_++ % buffer_.size()];
+          while (!work_element.ready.load(std::memory_order_relaxed)) {
+          }
+          work_element.work();
+          work_element.ready.exchange(false, std::memory_order_release);
           buffer_avail_.V();
         }
       })) {
@@ -34,15 +38,21 @@ WorkQueue::~WorkQueue() {
 
 void WorkQueue::AddWork(std::function<void(void)> f) {
   buffer_avail_.P();
-  buffer_[slot_++ % buffer_.size()] = f;
-  buffer_elem_remain_.V();
+  AddWorkInternal(f);
 }
 
 bool WorkQueue::TryAddWork(std::function<void(void)> f) {
   if (!buffer_avail_.TryP()) return false;
-  buffer_[slot_++ % buffer_.size()] = f;
-  buffer_elem_remain_.V();
+  AddWorkInternal(f);
   return true;
+}
+
+void WorkQueue::AddWorkInternal(std::function<void(void)> f) {
+  WorkElement& work_element =
+      buffer_[slot_.fetch_add(1, std::memory_order_relaxed) % buffer_.size()];
+  work_element.work = f;
+  work_element.ready.exchange(true, std::memory_order_acquire);
+  buffer_elem_remain_.V();
 }
 
 std::thread::id WorkQueue::GetWorkerThreadId() const {

@@ -35,14 +35,21 @@ class WorkQueue : public util::NonCopyable {
   std::thread::id GetWorkerThreadId() const;
 
  private:
+  void AddWorkInternal(std::function<void(void)> f);
+
   Semaphore buffer_avail_;
   Semaphore buffer_elem_remain_;
   std::atomic_bool exit_;
 
   std::atomic_uint32_t slot_;
   uint32_t slot_working_;
-
-  std::vector<std::function<void(void)>> buffer_;
+  
+  struct WorkElement {
+    WorkElement() : ready(false) {}
+    std::function<void(void)> work;
+    std::atomic<bool> ready;
+  };
+  std::vector<WorkElement> buffer_;
 
   mutable Gateway worker_id_gate_;
   std::thread::id worker_id_;

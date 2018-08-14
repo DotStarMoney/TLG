@@ -2,9 +2,8 @@
 
 #include <mutex>
 
-#include <iostream>
-
 #include "absl/base/internal/cycleclock.h"
+#include "glog/logging.h"
 #include "util/random.h"
 
 using std::vector;
@@ -26,7 +25,31 @@ AffinitizingScheduler::WorkerInfo& AffinitizingScheduler::GetWorkerFromToken(
   return workers_[token.id_ % workers_.size()];
 }
 
+void AffinitizingScheduler::Schedule(uint32_t worker,
+                                     std::function<void()> work) {
+  CHECK_LT(worker, workers_.size());
+  WorkerInfo& cur_worker = workers_[worker];
+
+  // We track whether or not we scheduled on a thread that isn't us so that we
+  // don't miss work scheduled while polling in Join().
+  bool lateral = false;
+  if (std::this_thread::get_id() == cur_worker.worker->GetWorkerThreadId()) {
+    lateral =
+        cur_worker.lateral_schedule.exchange(true, std::memory_order_relaxed);
+  }
+  cur_worker.active_n.fetch_add(1, std::memory_order_acquire);
+  auto w = [&cur_worker, work]() {
+    work();
+    cur_worker.active_n.fetch_sub(1, std::memory_order_release);
+  };
+  CHECK(cur_worker.worker->TryAddWork(w))
+      << "Cannot block scheduling on full work queue: deadlock possible.";
+}
+
 void AffinitizingScheduler::Schedule(Token* token, std::function<void()> work) {
+  // We guard this condition with last_active_cycle_ so that we won't always
+  // take the mutex. This re-balance will happen once per token scheduling
+  // between two calls to Sync().
   if (token->last_active_cycle_.load(std::memory_order_relaxed) != cycle_) {
     std::unique_lock<std::mutex> lock(token->m_);
     if (token->last_active_cycle_.load(std::memory_order_relaxed) != cycle_) {
@@ -35,9 +58,16 @@ void AffinitizingScheduler::Schedule(Token* token, std::function<void()> work) {
       token->last_cycle_consumed_ = 0;
 
       WorkerInfo& cur_worker = GetWorkerFromToken(*token);
+      // If this worker wants to purge...
       if (cur_worker.evacuate) {
+        // Get the percentage of time this token contributed to this thread's
+        // work.
         const double time_contribution =
             token->consumes_ / cur_worker.work_seconds;
+        // This token may schedule on a new worker if work scheduled with it 
+        // occupies less than 60% of the total work on this worker. If this is
+        // true, we randomly pick a new worker thread with a probability equal
+        // to this token's work percentage.
         if ((time_contribution < 0.6) &&
             !util::TrueWithChance(time_contribution)) {
           token->id_ = GetTokenId();
@@ -48,8 +78,15 @@ void AffinitizingScheduler::Schedule(Token* token, std::function<void()> work) {
   }
 
   WorkerInfo& cur_worker = GetWorkerFromToken(*token);
-  cur_worker.active_n.fetch_add(1, std::memory_order_relaxed);
-  cur_worker.worker->AddWork([this, &cur_worker, token, work]() {
+  // We track whether or not we scheduled on a thread that isn't us so that we
+  // don't miss work scheduled while polling in Join().
+  bool lateral = false;
+  if (std::this_thread::get_id() == cur_worker.worker->GetWorkerThreadId()) {
+    lateral =
+        cur_worker.lateral_schedule.exchange(true, std::memory_order_relaxed);
+  }
+  cur_worker.active_n.fetch_add(1, std::memory_order_acquire);
+  auto w = [this, &cur_worker, token, work]() {
     int64_t start_elapsed_cycles = absl::base_internal::CycleClock::Now();
 
     work();
@@ -62,11 +99,15 @@ void AffinitizingScheduler::Schedule(Token* token, std::function<void()> work) {
     token->last_cycle_consumed_ += elapsed_secs;
     cur_worker.work_seconds += elapsed_secs;
 
-    cur_worker.last_completed_cycle.store(cycle_, std::memory_order_relaxed);
-    cur_worker.active_n.fetch_sub(1, std::memory_order_relaxed);
-  });
+    cur_worker.active_n.fetch_sub(1, std::memory_order_release);
+  };
+  CHECK(cur_worker.worker->TryAddWork(w))
+      << "Cannot block scheduling on full work queue: deadlock possible.";
 }
 
+// The balancing algorithm is very simple: if a worker works over 20% longer 
+// than the average working time across all workers, we mark it and any tokens
+// currently scheduling with it may schedule on new workers.
 constexpr double kOverAveragePercent = 0.2;
 
 void AffinitizingScheduler::Sync() {
@@ -85,35 +126,22 @@ void AffinitizingScheduler::Sync() {
   }
 }
 
-void AffinitizingScheduler::WaitForGroupCompletion() const {
-  // Requires a re-think:
-  //   A just blocking when we run out of queue space isn't a great plan as we
-  //     run the risk of deadlock in a few different scenarios
-  //   B waiting for cycle completion the way we do now requires that at least
-  //     SOMETHING has been scheduled on each worker. Maybe we make this the
-  //     responsibility of the caller?
-  //   C A worker thread can schedule work on a different worker AFTER the
-  //     different worker has already set last_completed_cycle and active_n = 0,
-  //     this means we may stop blocking while work is still being done.
-
-  // Work that isn't scheduled in the context of AffinitizedScheduler is causing
-  // all sorts of problems. 
-  //
-  // B and C can be solved by adding a "ScheduleOn" method and never directly
-  // scheduling stuff on workqueues (outside of AS). Also a monolithic active_n
-  // is necessary, and it is on this that we block... or we can be clever and
-  // pass foward an active_n ... hmmm
-  //
-  // Solving A is doable the bad way by making any single workqueue big enough
-  // to accommodate all actors... but this isn't a great plan.
-
-  for (const auto& worker : workers_) {
-    while ((worker.last_completed_cycle.load(std::memory_order_relaxed) <
-            cycle_)) {
-      // Spin
-    }
-    while (worker.active_n.load(std::memory_order_relaxed) > 0) {
-      // Spin
+void AffinitizingScheduler::Join() {
+  int32_t cur_worker = 0;
+  // We use a polling loop that checks each worker to see if it has outstanding
+  // work items. If a worker doesn't have outstanding work items, we check to
+  // see if the worker has scheduled work on a different worker since we last
+  // checked its state. If it has, we have to recheck the other threads since
+  // they may now have running work items.
+  while (cur_worker < workers_.size()) {
+    WorkerInfo& worker_info = workers_[cur_worker];
+    if (worker_info.active_n.load(std::memory_order_relaxed) == 0) {
+      if (worker_info.lateral_schedule.load(std::memory_order_relaxed)) {
+        cur_worker = 0;
+        worker_info.lateral_schedule.exchange(false, std::memory_order_relaxed);
+        continue;
+      }
+      ++cur_worker;
     }
   }
 }
@@ -129,5 +157,4 @@ std::vector<double> AffinitizingScheduler::GetWorkingTime() const {
 AffinitizingScheduler::Token AffinitizingScheduler::GetToken() {
   return Token(GetTokenId());
 }
-
 }  // namespace thread

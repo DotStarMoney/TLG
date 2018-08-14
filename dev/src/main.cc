@@ -19,13 +19,13 @@ using thread::WorkQueue;
 
 namespace {
 constexpr uint32_t kQueues = 4;
-constexpr uint32_t kActors = 10;
+constexpr uint32_t kActors = 1000;
 
 const uint32_t kActorChunkSize =
     static_cast<uint32_t>(std::ceil(static_cast<double>(kActors) / kQueues));
 
-constexpr double kLoadMean = 3000;
-constexpr double kLoadStd = 400;
+constexpr double kLoadMean = 1000;
+constexpr double kLoadStd = 3000;
 
 std::default_random_engine generator;
 std::normal_distribution<double> norm_rnd(kLoadMean, kLoadStd);
@@ -41,12 +41,13 @@ uint32_t GetLoad() {
 
 struct Actor {
   Actor(const AffinitizingScheduler::Token& t, uint32_t load)
-      : t(t), load(load) {}
+      : t(t), load(load), count(0) {}
   AffinitizingScheduler::Token t;
   uint32_t load;
-  void work() const {
+  uint32_t count;
+  void work() {
     for (uint32_t i = 0; i < load; ++i) {
-      // Spin
+      count = (count + 1) * 2 - 1;
     }
   }
 };
@@ -62,7 +63,7 @@ int main(int argc, char* argv[]) {
 
   vector<unique_ptr<WorkQueue>> queues;
   for (int i = 0; i < kQueues; ++i) {
-    queues.push_back(std::make_unique<WorkQueue>(16));
+    queues.push_back(std::make_unique<WorkQueue>(1024));
   }
 
   vector<WorkQueue*> just_queues;
@@ -76,11 +77,12 @@ int main(int argc, char* argv[]) {
     actors.push_back(Actor(AffinitizingScheduler::GetToken(), GetLoad()));
   }
 
-  double end_time = GetClockSeconds() + 1.0;
+  double end_time = GetClockSeconds() + 10.0;
 
+  uint32_t cycles = 0;
   while (GetClockSeconds() < end_time) {
     for (int q = 0; q < queues.size(); ++q) {
-      queues[q]->AddWork([q, &scheduler, &actors]() {
+      scheduler.Schedule(q, [q, &scheduler, &actors]() {
         uint32_t l = q * kActorChunkSize;
         uint32_t h = std::min(l + kActorChunkSize, kActors);
         for (; l < h; ++l) {
@@ -90,12 +92,18 @@ int main(int argc, char* argv[]) {
       });
     }
 
-    scheduler.WaitForGroupCompletion();
-
-    auto working_seconds = scheduler.GetWorkingTime();
+    scheduler.Join();
 
     scheduler.Sync();
+    ++cycles;
   }
+
+  uint64_t total = 0;
+  for (auto& actor : actors) {
+    total += actor.count;
+  }
+  std::cout << "Cycles/s: " << (double) cycles / 10.0;
+  std::cout << total << std::endl;
 
   return 0;
 }

@@ -30,7 +30,7 @@ bool Semaphore::TryP() {
     std::unique_lock<std::shared_mutex> lock(m_);
     r_.fetch_add(1, std::memory_order_relaxed);
     cv_.notify_one();
-    return true;
+    return false;
   }
   return true;
 }
