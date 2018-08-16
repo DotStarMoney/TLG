@@ -23,5 +23,4 @@ void Gateway::Unlock() {
     cv_.notify_all();
   }
 }
-
 }  // namespace thread

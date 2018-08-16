@@ -25,19 +25,21 @@ AffinitizingScheduler::WorkerInfo& AffinitizingScheduler::GetWorkerFromToken(
   return workers_[token.id_ % workers_.size()];
 }
 
+void AffinitizingScheduler::CommitScheduling(WorkerInfo* worker_info) {
+  bool lateral = false;
+  if (std::this_thread::get_id() != worker_info->worker->GetWorkerThreadId()) {
+    lateral =
+        worker_info->lateral_schedule.exchange(true, std::memory_order_relaxed);
+  }
+  worker_info->active_n.fetch_add(1, std::memory_order_acquire);
+}
+
 void AffinitizingScheduler::Schedule(uint32_t worker,
                                      std::function<void()> work) {
-  CHECK_LT(worker, workers_.size());
+  CHECK_LT(worker, workers_.size()) << "Worker index out of range.";
   WorkerInfo& cur_worker = workers_[worker];
 
-  // We track whether or not we scheduled on a thread that isn't us so that we
-  // don't miss work scheduled while polling in Join().
-  bool lateral = false;
-  if (std::this_thread::get_id() == cur_worker.worker->GetWorkerThreadId()) {
-    lateral =
-        cur_worker.lateral_schedule.exchange(true, std::memory_order_relaxed);
-  }
-  cur_worker.active_n.fetch_add(1, std::memory_order_acquire);
+  CommitScheduling(&cur_worker);
   auto w = [&cur_worker, work]() {
     work();
     cur_worker.active_n.fetch_sub(1, std::memory_order_release);
@@ -60,14 +62,15 @@ void AffinitizingScheduler::Schedule(Token* token, std::function<void()> work) {
       WorkerInfo& cur_worker = GetWorkerFromToken(*token);
       // If this worker wants to purge...
       if (cur_worker.evacuate) {
-        // Get the percentage of time this token contributed to this thread's
-        // work.
+        // Get a temporally-smoothed percentage of time this token contributed
+        // to this thread's work. Since the value of consumes is based on its
+        // previous value, this can exceed 1.
         const double time_contribution =
-            token->consumes_ / cur_worker.work_seconds;
-        // This token may schedule on a new worker if work scheduled with it 
+            token->consumes_ / cur_worker.last_work_seconds;
+        // This token may schedule on a new worker if work scheduled with it
         // occupies less than 60% of the total work on this worker. If this is
-        // true, we randomly pick a new worker thread with a probability equal
-        // to this token's work percentage.
+        // true, we randomly pick a new worker thread (picking with a
+        // probability equal to this token's work percentage).
         if ((time_contribution < 0.6) &&
             !util::TrueWithChance(time_contribution)) {
           token->id_ = GetTokenId();
@@ -78,14 +81,7 @@ void AffinitizingScheduler::Schedule(Token* token, std::function<void()> work) {
   }
 
   WorkerInfo& cur_worker = GetWorkerFromToken(*token);
-  // We track whether or not we scheduled on a thread that isn't us so that we
-  // don't miss work scheduled while polling in Join().
-  bool lateral = false;
-  if (std::this_thread::get_id() == cur_worker.worker->GetWorkerThreadId()) {
-    lateral =
-        cur_worker.lateral_schedule.exchange(true, std::memory_order_relaxed);
-  }
-  cur_worker.active_n.fetch_add(1, std::memory_order_acquire);
+  CommitScheduling(&cur_worker);
   auto w = [this, &cur_worker, token, work]() {
     int64_t start_elapsed_cycles = absl::base_internal::CycleClock::Now();
 
@@ -105,7 +101,7 @@ void AffinitizingScheduler::Schedule(Token* token, std::function<void()> work) {
       << "Cannot block scheduling on full work queue: deadlock possible.";
 }
 
-// The balancing algorithm is very simple: if a worker works over 20% longer 
+// The balancing algorithm is very simple: if a worker works over 20% longer
 // than the average working time across all workers, we mark it and any tokens
 // currently scheduling with it may schedule on new workers.
 constexpr double kOverAveragePercent = 0.2;
@@ -122,6 +118,7 @@ void AffinitizingScheduler::Sync() {
   for (auto& worker_info : workers_) {
     worker_info.evacuate =
         worker_info.work_seconds > (avg_secs * (1.0 + kOverAveragePercent));
+    worker_info.last_work_seconds = worker_info.work_seconds;
     worker_info.work_seconds = 0;
   }
 }

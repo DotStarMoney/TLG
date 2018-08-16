@@ -57,6 +57,8 @@ add_executable(thread_affinitizingscheduler_test
 	affinitizingscheduler_test.cc)
 target_link_libraries(thread_affinitizingscheduler_test
 	thread_affinitizingscheduler
+	thread_workqueue
+	thread_gateway
 	gmock
 	gtest_main)
 add_test(thread_affinitizingscheduler thread_affinitizingscheduler_test)

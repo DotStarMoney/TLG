@@ -39,12 +39,16 @@ class AffinitizingScheduler : public util::NonCopyable {
                                std::memory_order_relaxed);
     }
 
+    int32_t id() const { return id_; }
+
+    void set_consumes(double consumes) { consumes_ = consumes; }
+
    private:
     Token(int32_t id)
         : id_(id),
           consumes_(0),
           last_cycle_consumed_(0),
-          last_active_cycle_(-1) {}
+          last_active_cycle_(0) {}
 
     // An id_ used to pick the queue on which we'll schedule.
     int32_t id_;
@@ -75,7 +79,7 @@ class AffinitizingScheduler : public util::NonCopyable {
   // load balancing.
   void Schedule(uint32_t worker, std::function<void()> work);
 
-  uint32_t size() const { return workers_.size(); }
+  uint32_t size() const { return static_cast<uint32_t>(workers_.size()); }
 
   // Update the load balancing state. This should be called after a call to
   // Join().
@@ -84,8 +88,9 @@ class AffinitizingScheduler : public util::NonCopyable {
   // Block until all scheduled work has completed.
   void Join();
 
-  // Get a list of durations in seconds that work was running on the work 
-  // queues since the last call to Sync().
+  // Get a list of durations in seconds that work was running on the work
+  // queues since the last scheduled work was run. Sync() clears the values
+  // this will return.
   std::vector<double> GetWorkingTime() const;
 
   // Get a token to use for load-balanced scheduling.
@@ -96,6 +101,7 @@ class AffinitizingScheduler : public util::NonCopyable {
     WorkerInfo(WorkQueue* const queue)
         : worker(queue),
           work_seconds(0),
+          last_work_seconds(0),
           evacuate(false),
           active_n(0),
           lateral_schedule(false) {}
@@ -103,6 +109,7 @@ class AffinitizingScheduler : public util::NonCopyable {
     WorkerInfo(const WorkerInfo& worker_info)
         : worker(worker_info.worker),
           work_seconds(worker_info.work_seconds),
+          last_work_seconds(worker_info.last_work_seconds),
           evacuate(worker_info.evacuate) {
       active_n.store(worker_info.active_n, std::memory_order_relaxed);
       lateral_schedule.store(worker_info.active_n, std::memory_order_relaxed);
@@ -111,12 +118,17 @@ class AffinitizingScheduler : public util::NonCopyable {
     WorkQueue* const worker;
 
     // The amount of time scheduled on this queue since the last call to Sync().
+    // This need-not be atomic as only the WorkQueue pointed to by this
+    // WorkerInfo will write to it (so writes will be serialized).
     double work_seconds;
+
+    // The amount of time scheduled on this queue since 2 calls to Sync() ago.
+    double last_work_seconds;
 
     // True if we should "rehash" the tokens scheduled to run on this queue.
     bool evacuate;
 
-    // The number of incomplete work items scheduled on this queue. 
+    // The number of incomplete work items scheduled on this queue.
     std::atomic<int32_t> active_n;
 
     // True if work on this queue scheduled work on a different worker queue.
@@ -126,13 +138,17 @@ class AffinitizingScheduler : public util::NonCopyable {
 
   WorkerInfo& GetWorkerFromToken(const Token& token);
 
+  // We track whether or not we scheduled on a thread that isn't us so that we
+  // don't miss work scheduled while polling in Join(). Calling CommitScheduling
+  // requires a subsequent decrement of the associated active_n when the
+  // committed work completes.
+  void CommitScheduling(WorkerInfo* worker_info);
+
   std::vector<WorkerInfo> workers_;
 
   // A cycle_ used to track calls to Sync() so that we don't re-balance tokens
   // more than once between calls to Sync().
   int32_t cycle_;
 };
-
 }  // namespace thread
-
 #endif  // THREAD_AFFINITIZINGSCHEDULER_H_

@@ -267,7 +267,7 @@ class StageGraph : public util::Lender {
       scenes_.emplace(std::make_pair(vers, std::move(scene)));
     }
 
-    // Scene retrieval is implemented so that getting a scene at a veision that
+    // Scene retrieval is implemented so that getting a scene at a version that
     // doesn't exist in this stage gets the next scene chronologically before
     // the one we ask for. This is implemented by walking the version graph
     // backward until we hit a scene that exists in this stage. Note that simply
