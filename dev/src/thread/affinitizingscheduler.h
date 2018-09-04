@@ -9,7 +9,6 @@
 #include "util/noncopyable.h"
 
 namespace thread {
-
 // A scheduler that tries to load balance scheduled work over a number of work
 // queues. AffinitizingScheduler also guarantees that any work scheduled with a
 // single token will be serialized between calls to Sync.
@@ -32,34 +31,20 @@ class AffinitizingScheduler : public util::NonCopyable {
 
    public:
     Token(const Token& token)
-        : id_(token.id_),
-          consumes_(token.consumes_),
-          last_cycle_consumed_(token.last_cycle_consumed_) {
+        : id_(token.id_) {
       last_active_cycle_.store(token.last_active_cycle_,
                                std::memory_order_relaxed);
     }
 
     int32_t id() const { return id_; }
 
-    void set_consumes(double consumes) { consumes_ = consumes; }
-
    private:
     Token(int32_t id)
         : id_(id),
-          consumes_(0),
-          last_cycle_consumed_(0),
           last_active_cycle_(0) {}
 
     // An id_ used to pick the queue on which we'll schedule.
     int32_t id_;
-
-    // A prediction of the amount of time work scheduled with this token takes
-    // to run in seconds.
-    double consumes_;
-
-    // The amount of time consumed by work scheduled with this token since
-    // Sync() was previously called in seconds.
-    double last_cycle_consumed_;
 
     std::mutex m_;
 
@@ -89,8 +74,10 @@ class AffinitizingScheduler : public util::NonCopyable {
   void Join();
 
   // Get a list of durations in seconds that work was running on the work
-  // queues since the last scheduled work was run. Sync() clears the values
-  // this will return.
+  // queues since the last scheduled work was run.
+  //
+  // CHANGE BECAUSE THIS IS DIFFERENT NOW
+  //
   std::vector<double> GetWorkingTime() const;
 
   // Get a token to use for load-balanced scheduling.
@@ -100,6 +87,7 @@ class AffinitizingScheduler : public util::NonCopyable {
   struct WorkerInfo {
     WorkerInfo(WorkQueue* const queue)
         : worker(queue),
+          balance_f(0),
           work_seconds(0),
           last_work_seconds(0),
           evacuate(false),
@@ -108,6 +96,7 @@ class AffinitizingScheduler : public util::NonCopyable {
 
     WorkerInfo(const WorkerInfo& worker_info)
         : worker(worker_info.worker),
+          balance_f(worker_info.balance_f),
           work_seconds(worker_info.work_seconds),
           last_work_seconds(worker_info.last_work_seconds),
           evacuate(worker_info.evacuate) {
@@ -116,6 +105,8 @@ class AffinitizingScheduler : public util::NonCopyable {
     }
 
     WorkQueue* const worker;
+
+    double balance_f;
 
     // The amount of time scheduled on this queue since the last call to Sync().
     // This need-not be atomic as only the WorkQueue pointed to by this
@@ -149,6 +140,9 @@ class AffinitizingScheduler : public util::NonCopyable {
   // A cycle_ used to track calls to Sync() so that we don't re-balance tokens
   // more than once between calls to Sync().
   int32_t cycle_;
+
+  const double balance_rdc_min_;
+  const double balance_rdc_scale_;
 };
 }  // namespace thread
 #endif  // THREAD_AFFINITIZINGSCHEDULER_H_

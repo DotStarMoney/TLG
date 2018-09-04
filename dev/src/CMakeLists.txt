@@ -13,6 +13,7 @@ add_subdirectory(${LOCAL}/physics)
 add_subdirectory(${LOCAL}/retro)
 add_subdirectory(${LOCAL}/sdl_util)
 add_subdirectory(${LOCAL}/tlg_lib)
+add_subdirectory(${LOCAL}/experimental)
 
 # -------------------------------- BUILD TARGETS -------------------------------
 
@@ -36,10 +37,7 @@ add_subdirectory(${LOCAL}/tlg_lib)
 add_executable(TLG
 	main.cc)
 target_link_libraries(TLG
-	thread_affinitizingscheduler
-	thread_workqueue
-	absl::base
-	glog)
+	experimental_radarconcept)
 add_custom_command(TARGET TLG POST_BUILD
                    COMMAND ${CMAKE_COMMAND} -E copy_directory
                        ${CMAKE_BINARY_DIR}/../res $<TARGET_FILE_DIR:TLG>/res)

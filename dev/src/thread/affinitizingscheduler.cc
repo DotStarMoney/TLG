@@ -1,5 +1,8 @@
 #include "thread/affinitizingscheduler.h"
 
+#include <iostream>
+
+#include <algorithm>
 #include <mutex>
 
 #include "absl/base/internal/cycleclock.h"
@@ -9,12 +12,16 @@
 using std::vector;
 
 namespace thread {
+
 namespace {
 int32_t GetTokenId() { return static_cast<int32_t>(util::rnd()); }
+constexpr double kWorkTimeSmoothing = 0.8;
 }  // namespace
 
 AffinitizingScheduler::AffinitizingScheduler(const vector<WorkQueue*>& queues)
-    : cycle_(0) {
+    : cycle_(0),
+      balance_rdc_min_(1.0 / queues.size()),
+      balance_rdc_scale_(queues.size() / (queues.size() - 1.0)) {
   for (auto queue : queues) {
     workers_.emplace_back(queue);
   }
@@ -55,28 +62,10 @@ void AffinitizingScheduler::Schedule(Token* token, std::function<void()> work) {
   if (token->last_active_cycle_.load(std::memory_order_relaxed) != cycle_) {
     std::unique_lock<std::mutex> lock(token->m_);
     if (token->last_active_cycle_.load(std::memory_order_relaxed) != cycle_) {
-      token->consumes_ =
-          token->consumes_ * 0.8 + token->last_cycle_consumed_ * 0.2;
-      token->last_cycle_consumed_ = 0;
-
-      WorkerInfo& cur_worker = GetWorkerFromToken(*token);
-      // If this worker wants to purge...
-      if (cur_worker.evacuate) {
-        // Get a temporally-smoothed percentage of time this token contributed
-        // to this thread's work. Since the value of consumes is based on its
-        // previous value, this can exceed 1.
-        const double time_contribution =
-            token->consumes_ / cur_worker.last_work_seconds;
-        // This token may schedule on a new worker if work scheduled with it
-        // occupies less than 60% of the total work on this worker. If this is
-        // true, we randomly pick a new worker thread (picking with a
-        // probability equal to this token's work percentage).
-        if ((time_contribution < 0.6) &&
-            !util::TrueWithChance(time_contribution)) {
-          token->id_ = GetTokenId();
-        }
-        token->last_active_cycle_.store(cycle_, std::memory_order_relaxed);
+      if (!util::TrueWithChance(GetWorkerFromToken(*token).balance_f)) {
+        token->id_ = GetTokenId();
       }
+      token->last_active_cycle_.store(cycle_, std::memory_order_relaxed);
     }
   }
 
@@ -92,7 +81,6 @@ void AffinitizingScheduler::Schedule(Token* token, std::function<void()> work) {
     const double elapsed_secs =
         elapsed_cycles / absl::base_internal::CycleClock::Frequency();
 
-    token->last_cycle_consumed_ += elapsed_secs;
     cur_worker.work_seconds += elapsed_secs;
 
     cur_worker.active_n.fetch_sub(1, std::memory_order_release);
@@ -101,25 +89,27 @@ void AffinitizingScheduler::Schedule(Token* token, std::function<void()> work) {
       << "Cannot block scheduling on full work queue: deadlock possible.";
 }
 
-// The balancing algorithm is very simple: if a worker works over 20% longer
-// than the average working time across all workers, we mark it and any tokens
-// currently scheduling with it may schedule on new workers.
-constexpr double kOverAveragePercent = 0.2;
-
 void AffinitizingScheduler::Sync() {
   ++cycle_;
 
   double avg_secs = 0;
   for (auto& worker_info : workers_) {
-    avg_secs += worker_info.work_seconds;
+    worker_info.last_work_seconds =
+        worker_info.last_work_seconds * kWorkTimeSmoothing +
+        worker_info.work_seconds * (1 - kWorkTimeSmoothing);
+    avg_secs += worker_info.last_work_seconds;
+    worker_info.work_seconds = 0;
   }
+
   avg_secs /= (double)workers_.size();
 
   for (auto& worker_info : workers_) {
-    worker_info.evacuate =
-        worker_info.work_seconds > (avg_secs * (1.0 + kOverAveragePercent));
-    worker_info.last_work_seconds = worker_info.work_seconds;
-    worker_info.work_seconds = 0;
+    worker_info.balance_f =
+        ((avg_secs / worker_info.last_work_seconds) - balance_rdc_min_) *
+        balance_rdc_scale_;
+
+    worker_info.balance_f = worker_info.balance_f +
+                            (1 - worker_info.balance_f) * kWorkTimeSmoothing;
   }
 }
 
@@ -146,7 +136,7 @@ void AffinitizingScheduler::Join() {
 std::vector<double> AffinitizingScheduler::GetWorkingTime() const {
   std::vector<double> seconds(workers_.size(), 0);
   for (uint32_t i = 0; i < workers_.size(); ++i) {
-    seconds[i] = workers_[i].work_seconds;
+    seconds[i] = workers_[i].last_work_seconds;
   }
   return seconds;
 }
