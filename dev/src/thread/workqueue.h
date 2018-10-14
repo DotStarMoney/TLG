@@ -22,7 +22,7 @@ namespace thread {
 class WorkQueue : public util::NonCopyable {
  public:
   // Starts the worker with the given queue length.
-  WorkQueue(uint32_t queue_length);
+  WorkQueue(uint32_t queue_length = 1);
 
   ~WorkQueue();
 

@@ -18,7 +18,7 @@ namespace retro {
 FbImg::FbImg(deleter_ptr<SDL_Texture> texture, int w, int h, bool is_target)
     : texture_(std::move(texture)), w_(w), h_(h), is_target_(is_target) {}
 
-unique_ptr<FbImg> FbImg::OfSize(ivec2 dimensions, FbColor32 fill_color) {
+unique_ptr<FbImg> FbImg::OfSize(ivec2 dimensions) {
   FbGfx::CheckInit(__func__);
 
   deleter_ptr<SDL_Texture> texture(

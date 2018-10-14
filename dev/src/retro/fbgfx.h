@@ -1,9 +1,12 @@
 #ifndef RETRO_FBGFX_H_
 #define RETRO_FBGFX_H_
 
+#include <tuple>
+
 #include "SDL.h"
 #include "absl/strings/string_view.h"
 #include "glm/vec2.hpp"
+#include "glm/vec3.hpp"
 #include "glog/logging.h"
 #include "retro/fbcore.h"
 #include "sdl_util/cleanup.h"
@@ -38,9 +41,13 @@ class FbGfx final {
   static void SetFullscreen(bool fullscreen);
 
   // Updates the screen after waiting for vsync, clobbering the back buffer
-  // in the process (be sure to Cls if you don't plan on overwriting the whole
+  // in the process (be sure to ClS if you don't plan on overwriting the whole
   // backbuffer)
   static void Flip();
+
+  static void PSet(glm::ivec2 p, FbColor32 color = FbColor32::WHITE);
+  static void PSet(const FbImg& target, glm::ivec2 p, 
+                   FbColor32 color = FbColor32::WHITE);
 
   static void Line(glm::ivec2 a, glm::ivec2 b,
                    FbColor32 color = FbColor32::WHITE);
@@ -111,6 +118,39 @@ class FbGfx final {
                     PutOptions opts, glm::ivec2 src_a = {-1, -1},
                     glm::ivec2 src_b = {-1, -1});
 
+  // Updates the internal state from a queue of the inputs triggered since the
+  // last call to SyncInputs. This must be called before calls to GetMouse or
+  // GetKeyPressed.
+  static void SyncInputs();
+
+  struct MouseButtonPressedState {
+    bool left;
+    bool right;
+    bool center;
+  };
+
+  // Returns the most recent location of the mouse cursor and if any of the
+  // mouse buttons were pressed since the last call to SyncInputs().
+  static const std::tuple<glm::ivec3, MouseButtonPressedState&> GetMouse();
+
+  enum Key {
+    UP_ARROW = SDL_SCANCODE_UP,
+    RIGHT_ARROW = SDL_SCANCODE_RIGHT,
+    DOWN_ARROW = SDL_SCANCODE_DOWN,
+    LEFT_ARROW = SDL_SCANCODE_LEFT,
+    SPACEBAR = SDL_SCANCODE_SPACE,
+    BACKSPACE = SDL_SCANCODE_BACKSPACE,
+    ESCAPE = SDL_SCANCODE_ESCAPE
+  };
+
+  // Returns true if the given key is currently pressed as of the last call to
+  // SyncInputs()
+  static bool GetKeyPressed(Key key);
+
+  // Returns true if the close button was pressed since the last call to
+  // SyncInputs()
+  static bool Close();
+
  private:
   FbGfx() { CHECK(false) << "An instance of FbGfx should not be constructed."; }
   static void CheckInit(absl::string_view meth_name) {
@@ -124,6 +164,7 @@ class FbGfx final {
   static void SetRenderColor(FbColor32 col);
 
   static void InternalCls(SDL_Texture* texture, FbColor32 col);
+  static void InternalPSet(SDL_Texture* texture, glm::ivec2 p, FbColor32 color);
   static void InternalLine(SDL_Texture* texture, glm::ivec2 a, glm::ivec2 b,
                            FbColor32 color);
   static void InternalRect(SDL_Texture* texture, glm::ivec2 a, glm::ivec2 b,
@@ -147,12 +188,18 @@ class FbGfx final {
 
   static std::unique_ptr<FbImg> basic_font_;
 
+  static uint32_t input_cycle_;
+
+  static void HandleMouseButtonEvent(SDL_Event event);
+
+  static MouseButtonPressedState mouse_button_state_;
+  static glm::ivec3 mouse_pointer_position_;
+  static bool close_pressed_;
+
   struct Cleanup {
     ~Cleanup() { sdl_util::Cleanup::UnregisterModule(); }
   };
   static Cleanup cleanup_;
 };
-
 }  // namespace retro
-
 #endif  // RETRO_FBGFX_H_

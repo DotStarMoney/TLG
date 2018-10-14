@@ -37,7 +37,8 @@ add_subdirectory(${LOCAL}/experimental)
 add_executable(TLG
 	main.cc)
 target_link_libraries(TLG
-	experimental_radarconcept)
+	experimental_cask
+	gflags)
 add_custom_command(TARGET TLG POST_BUILD
                    COMMAND ${CMAKE_COMMAND} -E copy_directory
                        ${CMAKE_BINARY_DIR}/../res $<TARGET_FILE_DIR:TLG>/res)

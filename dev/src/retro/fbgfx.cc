@@ -4,19 +4,30 @@
 
 using absl::string_view;
 using glm::ivec2;
+using glm::ivec3;
 using std::string;
 using std::unique_ptr;
 using util::deleter_ptr;
 
 namespace retro {
 namespace {
-constexpr ivec2 kTextCharacterDims{8, 8};
+const ivec2 kTextCharacterDims{8, 8};
 }  // namespace
+
+// Gfx variables
 
 FbGfx::Cleanup FbGfx::cleanup_;
 deleter_ptr<SDL_Window> FbGfx::window_ = nullptr;
 deleter_ptr<SDL_Renderer> FbGfx::renderer_ = nullptr;
 unique_ptr<FbImg> FbGfx::basic_font_ = nullptr;
+
+// Input variables
+
+uint32_t FbGfx::input_cycle_ = 0;
+
+FbGfx::MouseButtonPressedState FbGfx::mouse_button_state_{false, false, false};
+ivec3 FbGfx::mouse_pointer_position_{0, 0, 0};
+bool FbGfx::close_pressed_ = false;
 
 void FbGfx::Screen(ivec2 res, bool fullscreen, const string& title,
                    ivec2 physical_res) {
@@ -54,11 +65,7 @@ void FbGfx::Screen(ivec2 res, bool fullscreen, const string& title,
   // Load the system font
   PrepareFont();
 
-  // Start off with a fresh black window;
-  Cls();
-  Flip();
-
-  // Reveal our window, all ready to go!
+  // Reveal our window
   SDL_ShowWindow(window_.get());
 }
 
@@ -121,6 +128,24 @@ void FbGfx::InternalCls(SDL_Texture* texture, FbColor32 col) {
   SetRenderColor(col);
   CHECK_EQ(SDL_RenderClear(renderer_.get()), 0)
       << "SDL error (SDL_RenderClear): " << SDL_GetError();
+}
+
+// PSet
+
+void FbGfx::PSet(ivec2 p, FbColor32 color) {
+  CheckInit(__func__);
+  InternalPSet(nullptr, p, color);
+}
+void FbGfx::PSet(const FbImg& target, ivec2 p, FbColor32 color) {
+  CheckInit(__func__);
+  target.CheckTarget(__func__);
+  InternalPSet(target.texture_.get(), p, color);
+}
+void FbGfx::InternalPSet(SDL_Texture* texture, glm::ivec2 p, FbColor32 color) {
+  SetRenderTarget(texture);
+  SetRenderColor(color);
+  CHECK_EQ(SDL_RenderDrawPoint(renderer_.get(), p.x, p.y), 0)
+      << "SDL error (SDL_RenderDrawPoint): " << SDL_GetError();
 }
 
 // Line
@@ -426,6 +451,60 @@ void FbGfx::InternalTextParagraph(SDL_Texture* texture, string_view text,
 
     cursor = line_term + space_skip;
     dst_rect.y += kTextCharacterDims.y;
+  }
+}
+
+bool FbGfx::GetKeyPressed(Key key) {
+  CheckInit(__func__);
+  return SDL_GetKeyboardState(nullptr)[key];
+}
+
+const std::tuple<glm::ivec3, FbGfx::MouseButtonPressedState&>
+FbGfx::GetMouse() {
+  return {mouse_pointer_position_, mouse_button_state_};
+}
+
+bool FbGfx::Close() {
+  CheckInit(__func__);
+  return close_pressed_;
+}
+
+void FbGfx::SyncInputs() {
+  CheckInit(__func__);
+  close_pressed_ = false;
+  mouse_button_state_ = {false, false, false};
+  ++input_cycle_;
+  SDL_Event event;
+  while (SDL_PollEvent(&event)) {
+    switch (event.type) {
+      case SDL_QUIT:
+        close_pressed_ = true;
+        break;
+      case SDL_MOUSEBUTTONDOWN:
+        HandleMouseButtonEvent(event);
+        break;
+      case SDL_MOUSEWHEEL:
+        mouse_pointer_position_.z += event.wheel.y;
+        break;
+      case SDL_MOUSEMOTION:
+        mouse_pointer_position_.x = event.motion.x;
+        mouse_pointer_position_.y = event.motion.y;
+        break;
+    }
+  }
+}
+
+void FbGfx::HandleMouseButtonEvent(SDL_Event event) {
+  switch (event.button.button) {
+    case SDL_BUTTON_LEFT:
+      mouse_button_state_.left = true;
+      return;
+    case SDL_BUTTON_MIDDLE:
+      mouse_button_state_.center = true;
+      return;
+    case SDL_BUTTON_RIGHT:
+      mouse_button_state_.right = true;
+      return;
   }
 }
 }  // namespace retro

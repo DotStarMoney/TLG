@@ -6,6 +6,13 @@
 namespace retro {
 
 struct FbColor32 {
+  FbColor32(int32_t x) : value(x) {}
+  FbColor32(uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
+    channel.a = a;
+    channel.b = b;
+    channel.g = g;
+    channel.r = r;
+  }
   union {
     struct {
       unsigned int a : 8;
@@ -16,7 +23,6 @@ struct FbColor32 {
     int32_t value;
   };
   FbColor32& operator=(const int32_t& x) { this->value = x; }
-  FbColor32(const int32_t& x) { this->value = x; }
   operator int32_t() const { return this->value; }
   enum : uint32_t {
     TRANSPARENT_BLACK = 0x00000000,

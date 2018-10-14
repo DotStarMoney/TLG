@@ -39,7 +39,7 @@ TEST(Geometry2Test, intersectsLineAndRay_returnsTrue_whenIntersection) {
 
 TEST(Geometry2Test, intersectsLineAndRay_returnsFalse_whenNoIntersection) {
   // Line (-1, 0) -> (1, 0)
-  // Ray (0, -5) >> (1, 1000)
+  // Ray (0, -5) >> (1000, 1)
   testDoesNotIntersect({{-1, 0}, {1, 0}}, {{0, -5}, {1000, 1}});
   // Line (-3, -3) -> (3, 3)
   // Ray (1, 0) >> (1, 1)
@@ -47,6 +47,12 @@ TEST(Geometry2Test, intersectsLineAndRay_returnsFalse_whenNoIntersection) {
   // Line (0, 0) -> (-0.5, -0.5)
   // Ray (-1, 1) >> (0, -1)
   testDoesNotIntersect({{0, 0}, {-0.5, -0.5}}, {{-1, 1}, {0, -1}});
+}
+
+TEST(Geometry2Test, intersectsLineAndRay_returnsFalse_whenLineBehindRay) {
+  // Line (-1, 0) -> (1, 0)
+  // Ray (0, -5) >> (0, -1)
+  testDoesNotIntersect({{-1, 0}, {1, 0}}, {{0, -5}, {0, -1}});
 }
 
 }  // namespace geometry2

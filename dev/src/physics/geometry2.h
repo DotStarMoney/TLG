@@ -15,6 +15,7 @@ class Line2 {
   friend class Operations2;
 
  public:
+  Line2();
   Line2(glm::dvec2 start, glm::dvec2 end);
 
   void Update(glm::dvec2 start, glm::dvec2 end);
@@ -31,6 +32,7 @@ class Ray2 {
   friend class Operations2;
 
  public:
+  Ray2();
   Ray2(glm::dvec2 start, glm::dvec2 delta);
 
   void Update(glm::dvec2 start, glm::dvec2 delta);

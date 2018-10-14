@@ -25,9 +25,9 @@ class FbImg : public util::NonCopyable {
 
   // Load an image from a file.
   static std::unique_ptr<FbImg> FromFile(const std::string& filename);
-  // Create an image of the provided dimensions filled with a color constant.
-  static std::unique_ptr<FbImg> OfSize(glm::ivec2 dimensions,
-                                       FbColor32 fill_color = 0);
+  // Create an image of the provided dimensions. The contents of the texture
+  // are undefined and should be cleared/filled-entirely before use.
+  static std::unique_ptr<FbImg> OfSize(glm::ivec2 dimensions);
 
   int width() const { return w_; }
   int height() const { return h_; }
