@@ -90,30 +90,26 @@ struct ContentWithEmbedding {
   // So can be used with MakeSimpleGraph
   ContentWithEmbedding(const char* x) : text(x) {}
   ContentWithEmbedding(
-      const char* x,
-      StageGraph<string, ContentWithEmbedding>::EmbeddedIndex&& embedded)
-      : embedded(std::move(embedded)), text(x) {}
+      const char* x, StageGraph<string, ContentWithEmbedding>::EmbedId embedded)
+      : embedded(embedded), text(x) {}
   ContentWithEmbedding(
-      const char* x,
-      StageGraph<string, ContentWithEmbedding>::EmbeddedIndex&& embedded,
-      StageGraph<string, ContentWithEmbedding>::EmbeddedIndex&& extra_embedded)
-      : embedded(std::move(embedded)),
-        extra_embedded(std::move(extra_embedded)),
-        text(x) {}
+      const char* x, StageGraph<string, ContentWithEmbedding>::EmbedId embedded,
+      StageGraph<string, ContentWithEmbedding>::EmbedId extra_embedded)
+      : embedded(embedded), extra_embedded(extra_embedded), text(x) {}
 
   ContentWithEmbedding(ContentWithEmbedding&& x)
       : embedded(std::move(x.embedded)),
-        extra_embedded(std::move(x.extra_embedded)),
-        text(std::move(x.text)) {}
+        extra_embedded(x.extra_embedded),
+        text(x.text) {}
   ContentWithEmbedding& operator=(ContentWithEmbedding&& x) {
     embedded = std::move(x.embedded);
-    extra_embedded = std::move(x.extra_embedded);
-    text = std::move(x.text);
+    extra_embedded = x.extra_embedded;
+    text = x.text;
     return *this;
   }
 
-  StageGraph<string, ContentWithEmbedding>::EmbeddedIndex embedded;
-  StageGraph<string, ContentWithEmbedding>::EmbeddedIndex extra_embedded;
+  StageGraph<string, ContentWithEmbedding>::EmbedId embedded;
+  StageGraph<string, ContentWithEmbedding>::EmbedId extra_embedded;
   string text;
 };
 
@@ -127,8 +123,17 @@ TEST(IndexStageGraphTest, JumpSeqWithEmbedding) {
   index_a.Go("b");
 
   index_a.SetContent("adding picture base");
-  index_a.SetContent({"adding picture", index_a.Embed(std::move(index_b))});
-
+  int embeds_n;
+  index_a.SetContent(
+      [&embeds_n](
+          const std::vector<StageGraph<string, ContentWithEmbedding>::EmbedId>&
+              embeds) -> ContentWithEmbedding {
+        embeds_n = embeds.size();
+        CHECK(!embeds.empty());
+        return {"adding picture", embeds[0]};
+      },
+      {&index_b});
+  ASSERT_EQ(embeds_n, 1);
   ASSERT_FALSE(index_b.valid());
 
   auto index_c = index_a.Clone();
@@ -139,9 +144,17 @@ TEST(IndexStageGraphTest, JumpSeqWithEmbedding) {
   index_a.Replace(index_a.IndexFromEmbedded(content.embedded));
   ASSERT_EQ(graph.versions(), 2);
 
-  index_a.SetContent("adding second picture base");
   index_a.SetContent(
-      {"adding second picture", index_a.Embed(std::move(index_c))});
+      [&embeds_n](
+          const std::vector<StageGraph<string, ContentWithEmbedding>::EmbedId>&
+              embeds) -> ContentWithEmbedding {
+        embeds_n = embeds.size();
+        CHECK(!embeds.empty());
+        return {"adding second picture", embeds[0]};
+      },
+      {&index_c});
+  ASSERT_EQ(embeds_n, 1);
+  ASSERT_FALSE(index_c.valid());
 
   const auto& content2 = GetContent<ContentWithEmbedding>(&index_a);
   ASSERT_EQ(content2.text, "adding second picture");
@@ -178,7 +191,17 @@ TEST(IndexStageGraphTest, UnembedWithCompact) {
 
   ASSERT_EQ(graph.versions(), 3);
 
-  index_a.SetContent({"adding link", index_a.Embed(std::move(index_b))});
+  int embeds_n;
+  index_a.SetContent(
+      [&embeds_n](
+          const std::vector<StageGraph<string, ContentWithEmbedding>::EmbedId>&
+              embeds) -> ContentWithEmbedding {
+        embeds_n = embeds.size();
+        CHECK(!embeds.empty());
+        return {"adding link", embeds[0]};
+      },
+      {&index_b});
+  ASSERT_EQ(embeds_n, 1);
 
   // Make a temp index to manually trigger compaction.
   auto temp_index = index_a.Clone();
@@ -210,8 +233,17 @@ TEST(IndexStageGraphTest, MultipleEmbeddings) {
 
   ASSERT_EQ(graph.versions(), 3);
 
-  index_a.SetContent({"adding links", index_a.Embed(std::move(index_b0)),
-                      index_a.Embed(std::move(index_b1))});
+  int embeds_n;
+  index_a.SetContent(
+      [&embeds_n](
+          const std::vector<StageGraph<string, ContentWithEmbedding>::EmbedId>&
+              embeds) -> ContentWithEmbedding {
+        embeds_n = embeds.size();
+        CHECK(embeds.size() >= 2);
+        return {"adding links", embeds[0], embeds[1]};
+      },
+      {&index_b0, &index_b1});
+  ASSERT_EQ(embeds_n, 2);
 
   const auto& content = GetContent<ContentWithEmbedding>(&index_a);
   auto temp_index(index_a.Unembed(content.embedded));

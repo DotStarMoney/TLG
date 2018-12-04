@@ -77,6 +77,23 @@ target_link_libraries(tlg_lib_rescache_test
 	gmock
 	gtest_main)
 add_test(tlg_lib_rescache tlg_lib_rescache_test)
+#_______________________________________________________________________________
+#tlg_lib::indexgraph
+add_library(tlg_lib_indexgraph
+	indexgraph.cc
+	indexgraph.h)
+target_link_libraries(tlg_lib_indexgraph
+	tlg_lib_indexstagegraph)
+#_______________________________________________________________________________
+#tlg_lib::indexgraph test
+add_executable(tlg_lib_indexgraph_test
+	indexgraph_test.cc)
+target_link_libraries(tlg_lib_indexgraph_test
+	tlg_lib_indexgraph
+	gtest
+	gmock
+	gtest_main)
+add_test(tlg_lib_indexgraph tlg_lib_indexgraph_test)
 # ----------------------------------- FOLDER -----------------------------------
 set_target_properties(
 	tlg_lib_indexstagegraph_test
@@ -85,4 +102,6 @@ set_target_properties(
 	tlg_lib_tileset
 	tlg_lib_rescache
 	tlg_lib_rescache_test
+	tlg_lib_indexgraph
+	tlg_lib_indexgraph_test
 	PROPERTIES FOLDER tlg_lib)

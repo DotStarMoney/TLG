@@ -48,6 +48,9 @@ class StageGraph : public util::Lender {
  public:
   class Index;
 
+  // Provides a reference to embed info in a scene for clients.
+  typedef std::size_t EmbedId;
+
  private:
   friend class Index;
 
@@ -194,6 +197,7 @@ class StageGraph : public util::Lender {
     StageGraph *stage_graph_;
   };
 
+  struct Stage;
   // A unit of content storage at a version in a stage. This is a lender so that
   // versions can be chained together in the event that the user of StageGraph
   // chooses to rebuild the content of a stage incrementally (see
@@ -202,18 +206,51 @@ class StageGraph : public util::Lender {
    public:
     Scene(Scene &&scene)
         : basis_(std::move(scene.basis_)),
+          descendants_(std::move(scene.descendants_)),
           content_(std::move(scene.content_)) {}
 
     util::Loan<Scene> GetLoan() { return MakeLoan<Scene>(); }
 
     Scene(C &&content) : content_(std::move(content)) {}
 
-    Scene(util::Loan<Scene> basis, C &&content)
-        : basis_(std::move(basis)), content_(std::move(content)) {}
+    Scene(util::Loan<Scene> basis,
+          std::vector<std::pair<Stage *, VersionId>> &&descendants, C &&content)
+        : basis_(std::move(basis)),
+          descendants_(std::move(descendants)),
+          content_(std::move(content)) {}
+
+    // Adds a descendant in the next available unused element of
+    // this->descendants_.
+    EmbedId AddDescendant(Stage *stage, VersionId id) {
+      return AddDescendant(stage, id, &descendants_);
+    }
+
+    // Adds a descendant in the next available unused element of descendants.
+    static EmbedId AddDescendant(
+        Stage *stage, VersionId id,
+        std::vector<std::pair<Stage *, VersionId>> *descendants) {
+      // Fill the next available hole in the scene
+      int i;
+      for (i = 0; i < descendants->size(); ++i) {
+        if ((*descendants)[i].first == nullptr) break;
+      }
+      if (i == descendants->size()) {
+        descendants->emplace_back(stage, id);
+      } else {
+        (*descendants)[i] = {stage, id};
+      }
+      return i;
+    }
+
+    void RemoveDescendant(EmbedId id) { descendants_[id].first = nullptr; }
 
     // The scene from which this scene was created. Can be nullptr if we choose
     // not to keep track of that information.
     util::Loan<Scene> basis_;
+
+    // Outgoing links from embedding indicies. Each entry provides sufficient
+    // information to reconstruct an Index.
+    std::vector<std::pair<Stage *, VersionId>> descendants_;
 
     C content_;
   };
@@ -478,7 +515,7 @@ class StageGraph : public util::Lender {
     friend class StageGraph<SharedC, C>;
 
    public:
-    Builder(Builder &&builder) { fragments_ = std::move(builder.fragments); }
+    Builder(Builder &&builder) : fragments_(std::move(builder.fragments)) {}
 
     template <typename StringT>
     Builder &push(StringT &&name, SharedC &&shared_content, C &&content) {
@@ -513,39 +550,6 @@ class StageGraph : public util::Lender {
   // Visible for testing.
   int versions() const { return version_graph_.size(); }
 
-  // An index that doesn't pin any versions. This can be thought of as a version
-  // embedded in another version.
-  class EmbeddedIndex : util::NonCopyable {
-    friend class Index;
-
-   public:
-    EmbeddedIndex() : src_vers_(kNoVersion), dst_vers_(kNoVersion) {}
-
-    EmbeddedIndex(EmbeddedIndex &&embedded_index)
-        : stage_(std::move(embedded_index.stage_)),
-          src_vers_(embedded_index.src_vers_),
-          dst_vers_(embedded_index.dst_vers_) {}
-
-    EmbeddedIndex &operator=(EmbeddedIndex &&other) {
-      stage_ = std::move(other.stage_);
-      src_vers_ = other.src_vers_;
-      dst_vers_ = other.dst_vers_;
-      other.stage_.clear();
-      return *this;
-    }
-
-   private:
-    EmbeddedIndex(const std::string &stage, VersionId src_vers,
-                  VersionId dst_vers)
-        : stage_(stage), src_vers_(src_vers), dst_vers_(dst_vers) {}
-
-    // src_vers_ and stage_ exist entirely for sanity checking of embed/unembed
-    // calls.
-    std::string stage_;
-    VersionId src_vers_;
-    VersionId dst_vers_;
-  };
-
   // An Index captures a consistent state of the stages. It provides methods
   // to access/mutate a stage's content, and methods to manipulate Indexes.
   class Index : public util::NonCopyable {
@@ -565,6 +569,32 @@ class StageGraph : public util::Lender {
       stage_graph_ = std::move(other.stage_graph_);
       other.invalidate();
       return *this;
+    }
+
+    std::vector<EmbedId> EmbedInDescendants(
+        std::vector<Index *> indices,
+        std::vector<std::pair<Stage *, VersionId>> *descendants,
+        Version *src_version) {
+      std::vector<EmbedId> embedded_ids;
+      for (auto &index : indices) {
+        Version &embed_v = stage_graph_->GetVersionOrDie(index->vers_);
+        // The version we embed is still "referenced," hence we don't call
+        // "dec()". However since the embeded version is now only as
+        // accessible as is this version, we unpin it.
+        embed_v.unpin();
+
+        // Tell the embedded version that it has another parent
+        ++(embed_v.parent_count_);
+        // Tell our current version that we link to this index's version
+        src_version->IncLink(index->vers_);
+        // Tell the scene we're updating that it points to what this index did
+        embedded_ids.push_back(
+            Scene::AddDescendant(index->stage_, index->vers_, descendants));
+
+        // Wipe the index.
+        index->invalidate();
+      }
+      return embedded_ids;
     }
 
    public:
@@ -644,7 +674,17 @@ class StageGraph : public util::Lender {
     // link_base can be set to chain versions together so that version content
     // can be incrementally constructed in GetContent (if content is heavy this
     // is a technique to avoid storing large amounts of data in every scene)
-    void SetContent(C &&content, bool link_base = false) {
+    //
+    // Embedding an index in the graph requires us to make a new version so that
+    // the embedded index has something to point to. Because of this, we require
+    // that a content update be part of the embedding process. Since we'll
+    // usually want to store information about the embedded index (so we can
+    // turn it into a real index or remove it later), we don't take the content
+    // directly, and instead return it from a lambda parameter that will be
+    // handed a list of ids to the indicies we just embedded in the scene.
+    void SetContent(
+        std::function<C(const std::vector<EmbedId> &)> content_provider,
+        std::vector<Index *> indices_to_embed, bool link_base = false) {
       CHECK(valid()) << "Index invalid.";
       std::unique_lock<std::shared_mutex> lock(stage_graph_->m_);
 
@@ -654,10 +694,15 @@ class StageGraph : public util::Lender {
       Scene &base_scene = base_info.first;
       const VersionId base_vers = base_info.second;
 
-      // If nobody else cares about the scene we're currently looking at (and it
-      // already exists) we can just overwrite the content
-      if (v.overwritable_by_ref() && (base_vers == vers_)) {
-        base_scene.content_ = std::move(content);
+      // If nobody else cares about the scene we're currently looking at, it
+      // already exists, and none of the indices we want to embed point to the
+      // current version, we can just overwrite the content.
+      if (v.overwritable_by_ref() && (base_vers == vers_) &&
+          std::all_of(
+              indices_to_embed.begin(), indices_to_embed.end(),
+              [this](const Index *index) { return index->vers_ != vers_; })) {
+        base_scene.content_ = content_provider(EmbedInDescendants(
+            indices_to_embed, &(base_scene.descendants_), &v));
         return;
       }
 
@@ -690,91 +735,87 @@ class StageGraph : public util::Lender {
         v.AddStage(std::string(stage_->name_));
       }
 
-      stage_->AddScene(new_vers, Scene(link_base ? base_scene.GetLoan()
-                                                 : util::Loan<Scene>(),
-                                       std::move(content)));
+      // Copy the base scene's descendants
+      std::vector<std::pair<Stage *, VersionId>> descendants(
+          base_scene.descendants_);
+
+      // Increase reference counts to descendants that we just copied.
+      for (auto &descendant : descendants) {
+        Version &embed_v = stage_graph_->GetVersionOrDie(descendant.second);
+        ++(embed_v.parent_count_);
+        v.IncLink(embed_v.vers_);
+      }
+      // Update the descendants to include the indicies to embed, and get a list
+      // of their ids.
+      std::vector<EmbedId> embed_ids =
+          EmbedInDescendants(indices_to_embed, &descendants, &v);
+
+      stage_->AddScene(
+          new_vers,
+          Scene(link_base ? base_scene.GetLoan() : util::Loan<Scene>(),
+                std::move(descendants), content_provider(embed_ids)));
+
       vers_ = new_vers;
     }
 
-    // Consume a different index, "embedding" it in this index. This internally
-    // sets the version of the consumed index to be a descendant of the version
-    // in the calling index. We don't need to compact since by definition, this
-    // index's version is accessible, therefore the embedded index version is
-    // also accessible as it is our descendant.
-    EmbeddedIndex Embed(Index &&index) {
-      CHECK(valid()) << "Index invalid.";
-      CHECK_NE(&index, this) << "Cannot embed index within itself.";
-
-      {
-        std::shared_lock<std::shared_mutex> slock(stage_graph_->m_);
-
-        Version &embed_v = stage_graph_->GetVersionOrDie(index.vers_);
-        Version &v = stage_graph_->GetVersionOrDie(vers_);
-
-        std::unique_lock<std::mutex> embed_lock(embed_v.m_, std::defer_lock);
-        std::unique_lock<std::mutex> lock(v.m_, std::defer_lock);
-        std::lock(embed_lock, lock);
-
-        // The version we embed is still "referenced," hence we don't call
-        // "dec()". However since the embeded version is now only as accessible
-        // as is this version, we unpin it.
-        embed_v.unpin();
-
-        // There's no point adding an edge to the version graph that starts and
-        // ends at the same version.
-        if (vers_ != index.vers_) {
-          ++(embed_v.parent_count_);
-          v.IncLink(embed_v.vers_);
-        }
-      }
-      std::string stage_name_ = index.stage_->name_;
-
-      index.invalidate();
-      return EmbeddedIndex(std::move(stage_name_), vers_, index.vers_);
+    // Same as SetContent but without any embedding/un-embedding.
+    void SetContent(C &&content, bool link_base = false) {
+      SetContent(
+          [&content](const std::vector<EmbedId> &unused) {
+            return std::move(content);
+          },
+          std::vector<Index *>(), link_base);
     }
 
-    // Reverse the embedding process.
-    Index Unembed(const EmbeddedIndex &embedded_index) {
+    // Remove an embedded index, turning it into a real Index
+    Index Unembed(EmbedId id) {
       CHECK(valid()) << "Index invalid.";
-      CHECK_EQ(embedded_index.src_vers_, vers_)
-          << "Index must be unembedded from the same version into which it was "
-             "embedded.";
-      {
-        std::shared_lock<std::shared_mutex> slock(stage_graph_->m_);
 
-        Version &unembed_v =
-            stage_graph_->GetVersionOrDie(embedded_index.dst_vers_);
-        Version &v = stage_graph_->GetVersionOrDie(vers_);
+      std::shared_lock<std::shared_mutex> slock(stage_graph_->m_);
+      Scene &scene = stage_->GetScene(vers_).first;
 
-        std::unique_lock<std::mutex> unembed_lock(unembed_v.m_,
-                                                  std::defer_lock);
-        std::unique_lock<std::mutex> lock(v.m_, std::defer_lock);
-        std::lock(unembed_lock, lock);
+      CHECK(id < scene.descendants_.size()) << "EmbedId out of range.";
+      CHECK(scene.descendants_[id].first != nullptr) << "EmbedId invalid.";
 
-        unembed_v.pin();
+      std::pair<Stage *, VersionId> descendant = scene.descendants_[id];
+      scene.descendants_[id].first = nullptr;
 
-        // See comment in Embed...
-        if (vers_ != embedded_index.dst_vers_) {
-          --(unembed_v.parent_count_);
-          v.DecLink(unembed_v.vers_);
-        }
-      }
+      Version &unembed_v = stage_graph_->GetVersionOrDie(descendant.second);
+      Version &v = stage_graph_->GetVersionOrDie(vers_);
 
-      return Index(embedded_index.dst_vers_,
-                   &(stage_graph_->GetStageOrDie(embedded_index.stage_)),
+      std::unique_lock<std::mutex> unembed_lock(unembed_v.m_, std::defer_lock);
+      std::unique_lock<std::mutex> lock(v.m_, std::defer_lock);
+      std::lock(unembed_lock, lock);
+
+      // No need to inc since while we remove the embed, we add an index
+      unembed_v.pin();
+
+      --(unembed_v.parent_count_);
+      v.DecLink(unembed_v.vers_);
+
+      return Index(descendant.second, descendant.first,
                    stage_graph_->GetLoan());
     }
 
     // Form a new index from an embedded index
-    Index IndexFromEmbedded(const EmbeddedIndex &embedded_index) {
+    Index IndexFromEmbedded(EmbedId id) {
       CHECK(valid()) << "Index invalid.";
+
       std::shared_lock<std::shared_mutex> slock(stage_graph_->m_);
-      Version &v = stage_graph_->GetVersionOrDie(embedded_index.dst_vers_);
+      Scene &scene = stage_->GetScene(vers_).first;
+
+      CHECK(id < scene.descendants_.size()) << "EmbedId out of range.";
+      CHECK(scene.descendants_[id].first != nullptr) << "EmbedId invalid.";
+
+      std::pair<Stage *, VersionId> descendant = scene.descendants_[id];
+      Version &v = stage_graph_->GetVersionOrDie(descendant.second);
+
       std::unique_lock<std::mutex> lock(v.m_);
+
       v.inc();
       v.pin();
-      return Index(embedded_index.dst_vers_,
-                   &(stage_graph_->GetStageOrDie(embedded_index.stage_)),
+
+      return Index(descendant.second, descendant.first,
                    stage_graph_->GetLoan());
     }
 
